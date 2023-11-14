@@ -159,3 +159,32 @@ test("HEAD shows the line that is actually in it", () => {
   const view = render({ lens: "folder", acts: [] });
   assert.match(view.el.querySelector(".cl-ob-folder")!.textContent!, /HEAD\s+ref: refs\/heads\/main/);
 });
+
+// "same bytes, same name" is the claim the whole track rests on. Listing only
+// file NAMES asked the learner to take on trust which files hold the same bytes.
+test("your folder shows each file's first line, aligned", () => {
+  const view = render({ lens: "folder", acts: [
+    { act: "write", path: "notes.md", text: "hello world\n" },
+    { act: "write", path: "copy.md", text: "hello world\n" },
+    { act: "write", path: "loud.md", text: "hello world!\n" },
+  ] });
+  const text = view.el.querySelector(".cl-ob-folder")!.textContent!;
+  const rows = text.split("\n").filter((l) => /\.md/.test(l));
+  assert.equal(rows.length, 3);
+  for (const [name, body] of [["notes.md", "hello world"], ["copy.md", "hello world"], ["loud.md", "hello world!"]]) {
+    const row = rows.find((r) => r.includes(name))!;
+    assert.ok(row.includes(body), `${name} should show its first line`);
+  }
+  // Padded to a common width, so identical contents line up under each other.
+  const at = rows.map((r) => r.indexOf("hello"));
+  assert.equal(new Set(at).size, 1, "contents should start at the same column");
+});
+
+test("a long or multi-line file shows one truncated line, not the whole thing", () => {
+  const view = render({ lens: "folder", acts: [
+    { act: "write", path: "a.md", text: "x".repeat(80) + "\nsecond line\n" },
+  ] });
+  const text = view.el.querySelector(".cl-ob-folder")!.textContent!;
+  assert.ok(text.includes("\u2026"), "should be truncated");
+  assert.ok(!text.includes("second line"), "only the first line is shown");
+});

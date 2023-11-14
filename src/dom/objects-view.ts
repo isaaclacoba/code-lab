@@ -103,7 +103,18 @@ function folderHtml(replay: Replay, labels: VizLabels, detail: "core" | "full"):
   }
   if (store.worktree.size) {
     lines.push("", escapeHtml(labels.objYourFolder));
-    for (const [path] of store.worktree) lines.push(`  ${escapeHtml(path)}`);
+    // Show each file's first line beside its name. Without it the learner has to
+    // take the lesson's word for which files hold the same bytes - and "same
+    // bytes, same name" is the one claim this track cannot ask anyone to take on
+    // trust. Names are padded so the contents line up and two identical files
+    // are obvious at a glance.
+    const width = Math.max(...[...store.worktree.keys()].map((p) => p.length));
+    for (const [path, text] of store.worktree) {
+      const firstLine = text.split("\n")[0];
+      const shown = firstLine.length > 30 ? `${firstLine.slice(0, 29)}\u2026` : firstLine;
+      const pad = " ".repeat(width - path.length);
+      lines.push(`  ${escapeHtml(path)}${pad}   ${dim(escapeHtml(shown))}`);
+    }
   }
   return lines.join("\n");
 }
