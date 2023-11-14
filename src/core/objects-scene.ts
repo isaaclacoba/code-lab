@@ -16,6 +16,7 @@ import {
   ObjectStore,
   type CommitFields,
   type ObjectId,
+  type StoredObject,
 } from "./git-objects.js";
 
 /** Which picture this step draws. `folder` is the files on disk, `chain` is who
@@ -51,6 +52,11 @@ export interface ObjectsScene {
    *  in the lesson that opens the folder: a learner who looks inside a real
    *  `.git` should not find things nobody warned them about. Defaults to `core`. */
   detail?: "core" | "full";
+  /** Open the newest object of this type and show the EXACT bytes git stores for
+   *  it. A commit's five lines are the content of the lesson about commits, and
+   *  paraphrasing them in narration would be describing the thing instead of
+   *  showing it. */
+  open?: "blob" | "tree" | "commit";
   /** A short caption under the picture. */
   note?: string;
   /** Fixed so ids are deterministic - a lesson can quote one in its prose. */
@@ -62,6 +68,7 @@ export interface ResolvedObjectsScene {
   acts: ObjectAct[];
   fresh: ObjectAct[];
   detail: "core" | "full";
+  open?: "blob" | "tree" | "commit";
   note?: string;
   author: string;
 }
@@ -75,11 +82,13 @@ export function resolveObjects(scene: ObjectsScene | undefined): ResolvedObjects
   if (!scene || !Array.isArray(scene.acts)) return null;
   const acts = scene.acts.slice();
   const want = scene.fresh === undefined ? 1 : Math.max(0, Math.min(scene.fresh, acts.length));
+  const OPENABLE = ["blob", "tree", "commit"] as const;
   return {
     lens: scene.lens === "chain" || scene.lens === "both" ? scene.lens : "folder",
     acts,
     fresh: want === 0 ? [] : acts.slice(acts.length - want),
     detail: scene.detail === "full" ? "full" : "core",
+    open: OPENABLE.includes(scene.open as never) ? scene.open : undefined,
     note: scene.note,
     author: scene.author || DEFAULT_AUTHOR,
   };
@@ -254,4 +263,28 @@ function lastTreeOf(store: ObjectStore): ObjectId | null {
 
 export function short(id: ObjectId): string {
   return id.slice(0, 7);
+}
+
+/** The newest object of a type, with the exact bytes git stores for it decoded
+ *  back to text. Binary tree entries are unreadable as text, so a tree is shown
+ *  the way `git cat-file -p` shows it - the only rendering in this scene, and
+ *  the lesson says so. */
+export function openObject(
+  replay: Replay,
+  type: "blob" | "tree" | "commit",
+): { id: ObjectId; type: string; text: string } | null {
+  let found: StoredObject | null = null;
+  for (const object of replay.store.objects.values()) {
+    if (object.type === type) found = object;
+  }
+  if (!found) return null;
+  if (found.entries) {
+    return {
+      id: found.id, type,
+      text: found.entries
+        .map((e) => `${e.mode} blob ${e.id}\t${e.name}`)
+        .join("\n"),
+    };
+  }
+  return { id: found.id, type, text: new TextDecoder().decode(found.body) };
 }

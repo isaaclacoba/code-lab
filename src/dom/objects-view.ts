@@ -18,6 +18,7 @@ import { DEFAULT_VIZ_LABELS } from "../core/memory-model.js";
 import type { VizLabels } from "../core/memory-model.js";
 import {
   chainRows,
+  openObject,
   replayObjects,
   resolveObjects,
   short,
@@ -29,6 +30,7 @@ export class ObjectsView implements Panel {
   readonly el: HTMLElement;
   private readonly folderEl: HTMLElement;
   private readonly chainEl: HTMLElement;
+  private readonly openEl: HTMLElement;
   private readonly noteEl: HTMLElement;
   private readonly labels: VizLabels;
 
@@ -40,10 +42,12 @@ export class ObjectsView implements Panel {
     this.folderEl.className = "cl-ob-folder";
     this.chainEl = document.createElement("div");
     this.chainEl.className = "cl-ob-chain";
+    this.openEl = document.createElement("pre");
+    this.openEl.className = "cl-ob-open";
     this.noteEl = document.createElement("p");
     // Follows the `.cl-<scene>-cap` convention the other scenes use.
     this.noteEl.className = "cl-ob-cap";
-    this.el.append(this.folderEl, this.chainEl, this.noteEl);
+    this.el.append(this.folderEl, this.chainEl, this.openEl, this.noteEl);
   }
 
   sync(ctx: SyncCtx): void {
@@ -57,6 +61,14 @@ export class ObjectsView implements Panel {
     this.chainEl.hidden = !wantsChain;
     if (wantsFolder) this.folderEl.innerHTML = folderHtml(replay, this.labels, scene.detail);
     if (wantsChain) this.chainEl.innerHTML = chainHtml(chainRows(replay), this.labels);
+
+    const opened = scene.open ? openObject(replay, scene.open) : null;
+    this.openEl.hidden = !opened;
+    if (opened) {
+      this.openEl.innerHTML =
+        `<span class="cl-ob-openhead">${escapeHtml(opened.type)} ${short(opened.id)}</span>\n` +
+        escapeHtml(opened.text);
+    }
 
     this.noteEl.innerHTML = scene.note ? escapeHtml(scene.note) : "";
     this.noteEl.hidden = !scene.note;

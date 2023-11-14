@@ -188,3 +188,31 @@ test("a long or multi-line file shows one truncated line, not the whole thing", 
   assert.ok(text.includes("\u2026"), "should be truncated");
   assert.ok(!text.includes("second line"), "only the first line is shown");
 });
+
+// A commit's five lines ARE the content of the lesson about commits. Paraphrasing
+// them in narration would describe the thing instead of showing it.
+test("open shows the exact bytes git stores for an object", () => {
+  const view = render({ lens: "chain", open: "commit", acts: SAVE });
+  const opened = view.el.querySelector(".cl-ob-open") as HTMLElement;
+  assert.ok(!opened.hidden);
+  const text = opened.textContent!;
+  // Verified against real git for THIS fixture: hello.txt holding "hello world\n"
+  // gives tree 68aba62e560c... and commit 28a8228dbaa8... with this author and date.
+  assert.match(text, /^commit 28a8228/m, "labelled with its real short id");
+  assert.match(text, /tree 68aba62e560c0ebc3396e8ae9335232cd93a3f60/);
+  assert.match(text, /author A Learner <learner@example\.com> 1700000000 \+0000/);
+  assert.match(text, /committer A Learner/);
+  assert.match(text, /\n\nsave the greeting/, "one blank line before the message");
+});
+
+test("open is hidden when a step does not ask for it, and ignores a bad type", () => {
+  assert.ok((render({ lens: "chain", acts: SAVE }).el.querySelector(".cl-ob-open") as HTMLElement).hidden);
+  assert.ok((render({ lens: "chain", open: "packfile" as never, acts: SAVE })
+    .el.querySelector(".cl-ob-open") as HTMLElement).hidden);
+});
+
+test("opening a tree shows it the way git cat-file does", () => {
+  const view = render({ lens: "chain", open: "tree", acts: SAVE });
+  assert.match(view.el.querySelector(".cl-ob-open")!.textContent!,
+    /100644 blob 3b18e512dba79e4c8300dd08aeb37f8e728b8dad\thello\.txt/);
+});
