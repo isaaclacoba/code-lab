@@ -6,6 +6,8 @@ export { ReadOnlyView } from "./editors/readonly.js";
 export { TextareaEditor } from "./editors/textarea.js";
 export { MonacoEditor } from "./editors/monaco.js";
 export type { MonacoEditorConfig } from "./editors/monaco.js";
+export { loadMonaco } from "./editors/load-monaco.js";
+export type { LoadMonacoConfig } from "./editors/load-monaco.js";
 
 export { RoslynIframeRunner } from "./runners/roslyn-iframe.js";
 export type { RoslynIframeRunnerConfig } from "./runners/roslyn-iframe.js";
