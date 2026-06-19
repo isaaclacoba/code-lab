@@ -3,3 +3,8 @@ dist/
 *.log
 .DS_Store
 .cache/
+
+# .NET build output for the compiler host (compiled on demand, never tracked)
+compiler-host/bin/
+compiler-host/obj/
+compiler-host/publish/

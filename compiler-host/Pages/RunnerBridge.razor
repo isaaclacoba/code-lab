@@ -1,0 +1,35 @@
+@inject CompilerService Compiler
+@inject IJSRuntime JS
+@implements IDisposable
+@using Level3Capstone.Services
+
+@* Headless bridge: lets any page run C# through this app's in-browser compiler
+   via postMessage. Rendered only when the app is loaded with ?runner=1. *@
+
+@code {
+    private DotNetObjectReference<RunnerBridge>? _ref;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Compiler.InitAsync();
+        _ref = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("codeRunnerHost.init", _ref);
+    }
+
+    [JSInvokable]
+    public async Task<RunResult> Run(string code)
+    {
+        var result = await Compiler.RunAsync(code ?? "");
+        var errors = result.Errors
+            .Select(e => new RunError(e.Line, e.Friendly, e.Raw))
+            .ToList();
+        return new RunResult(result.Compiled, result.Output, result.RuntimeError, errors);
+    }
+
+    public void Dispose() => _ref?.Dispose();
+
+    public record RunError(int? Line, string? Friendly, string Raw);
+
+    public record RunResult(bool Compiled, string Output, string? RuntimeError, List<RunError> Errors);
+}

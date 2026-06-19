@@ -22,6 +22,8 @@
   ],
   "scripts": {
     "build": "tsup",
+    "build:host": "dotnet publish compiler-host -c Release -o dist/compiler-host",
+    "build:all": "npm run build && npm run build:host",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "node --import tsx --test test/*.test.ts",

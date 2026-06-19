@@ -1,0 +1,355 @@
+@page "/"
+@page "/index.html"
+@using Level3Capstone.Services
+@inject CompilerService Compiler
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@if (_runnerMode)
+{
+    <RunnerBridge />
+}
+else
+{
+<div class="capstone">
+    <header class="cap-head">
+        <p class="eyebrow">Level 3 capstone</p>
+        <h1>SOLID in practice</h1>
+        <p class="lead">Refactor a small, working program one step at a time. It compiles and runs right here in your browser.</p>
+        <p class="back-link"><a href="../index.html">Back to level selector</a></p>
+    </header>
+
+    <section class="brief">
+        <h3>The goal</h3>
+        <p>
+            This <code>TestRunner</code> works, but it does three jobs at once and is welded to the console.
+            Reshape it so each job lives where it belongs. You do not have to do it all at once - chip away,
+            and watch the milestones below fill in as you go.
+        </p>
+    </section>
+
+    <section class="progress-wrap">
+        <div class="progress-head">
+            <strong>Progress</strong>
+            <span>@PassedCount / @Milestones.Length</span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill" style="width:@(PassedCount * 100 / Milestones.Length)%"></div>
+        </div>
+    </section>
+
+    @if (!_ready)
+    {
+        <p class="preparing">Preparing the C# compiler...</p>
+    }
+
+    <section class="editor-wrap">
+        <div class="monaco-host" @ref="_editorHost"></div>
+    </section>
+
+    <section class="cap-actions">
+        <button class="btn primary" @onclick="Run" disabled="@(_busy || !_ready)">
+            @(_busy ? "Working..." : "Run")
+        </button>
+        <button class="btn" @onclick="CheckProgress" disabled="@(_busy || !_ready)">Check progress</button>
+        <button class="btn" @onclick="Reset" disabled="@_busy">Reset code</button>
+    </section>
+
+    @if (_result is not null)
+    {
+        @if (_result.Errors.Count > 0)
+        {
+            <section class="panel errors">
+                <h3>Let's fix this first</h3>
+                <p class="errors-note">Often a single early mistake (a missing or extra <code>{ } ( ) ;</code>) is enough to confuse the rest. Fix the top one first, then run again.</p>
+                <ul>
+                    @foreach (var e in _result.Errors)
+                    {
+                        <li>
+                            @if (e.Line is not null)
+                            {
+                                <span class="loc">Line @e.Line@(e.Column is not null ? $", col {e.Column}" : "")</span>
+                            }
+                            @if (e.Friendly is not null)
+                            {
+                                <span class="friendly">@e.Friendly</span>
+                            }
+                            <span class="raw">@e.Raw</span>
+                            @if (e.Why is not null)
+                            {
+                                <button class="why-toggle" @onclick="() => ToggleWhy(e)">
+                                    @(_openWhy.Contains(e) ? "Hide why" : "Learn why")
+                                </button>
+                                @if (_openWhy.Contains(e))
+                                {
+                                    <p class="why-text">@e.Why</p>
+                                }
+                            }
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
+        else
+        {
+            <section class="panel output">
+                <h3>Output</h3>
+                <pre>@_result.Output</pre>
+                @if (_result.RuntimeError is not null)
+                {
+                    <p class="runtime-error">Runtime error: @_result.RuntimeError</p>
+                }
+            </section>
+        }
+    }
+
+    @if (_checks is not null)
+    {
+        <section class="panel checks">
+            <h3>Milestones</h3>
+            <ul class="check-list">
+                @foreach (var (m, c) in Pairs())
+                {
+                    <li class="@(c.Passed ? "pass" : "fail")">
+                        <span class="mark">@(c.Passed ? "DONE" : "TODO")</span>
+                        <span class="label">@c.Title</span>
+                        <span class="detail">@c.Detail</span>
+                        @if (!c.Passed)
+                        {
+                            <div class="hint-zone">
+                                @if (c.Anchors.Count > 0)
+                                {
+                                    <button class="btn tiny point" @onclick="() => ShowWhere(c)">Show me where</button>
+                                }
+                                @{ var shown = HintLevel(m.Id); }
+                                @for (var r = 0; r < shown; r++)
+                                {
+                                    var hint = m.Hints[r];
+                                    <div class="hint">
+                                        <span class="hint-text">@hint.Text</span>
+                                        @if (hint.Code is not null)
+                                        {
+                                            <pre class="hint-code">@hint.Code</pre>
+                                        }
+                                    </div>
+                                }
+                                @if (shown < m.Hints.Length)
+                                {
+                                    <button class="btn tiny" @onclick="() => RevealHint(m.Id)">
+                                        @(shown == 0 ? "I'm stuck - nudge me" : "Still stuck - more")
+                                    </button>
+                                }
+                            </div>
+                        }
+                        @if (m.Why is not null)
+                        {
+                            <button class="why-toggle" @onclick="() => ToggleMilestoneWhy(m.Id)">
+                                @(_openMilestoneWhy.Contains(m.Id) ? "Hide why" : "Learn why")
+                            </button>
+                            @if (_openMilestoneWhy.Contains(m.Id))
+                            {
+                                <p class="why-text">@m.Why</p>
+                                @if (_milestoneSvg.TryGetValue(m.Id, out var svg) && !string.IsNullOrEmpty(svg))
+                                {
+                                    <div class="why-diagram">@((MarkupString)svg)</div>
+                                }
+                            }
+                        }
+                    </li>
+                }
+            </ul>
+
+            @if (_allPassed)
+            {
+                <p class="cap-done">All milestones done. You refactored it yourself - capstone complete.</p>
+            }
+        </section>
+    }
+
+    <section class="give-up">
+        @if (!_gaveUp)
+        {
+            <button class="btn ghost" @onclick="GiveUp">I give up - show me a full solution</button>
+        }
+        else
+        {
+            <p class="give-up-note">No shame in it - study this, then try again from Reset.</p>
+        }
+    </section>
+</div>
+}
+
+@code {
+    private static Milestone[] Milestones => Capstone.Milestones;
+
+    private bool _runnerMode;
+    private string _code = Capstone.StarterCode;
+    private CompileResult? _result;
+    private IReadOnlyList<MilestoneResult>? _checks;
+    private readonly Dictionary<int, int> _hintLevels = new();
+    private readonly HashSet<CompileError> _openWhy = new();
+    private readonly HashSet<int> _openMilestoneWhy = new();
+    private readonly Dictionary<int, string> _milestoneSvg = new();
+    private bool _allPassed;
+    private bool _gaveUp;
+    private bool _busy;
+    private bool _ready;
+    private ElementReference _editorHost;
+    private bool _editorReady;
+
+    private int PassedCount => _checks?.Count(c => c.Passed) ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var query = new Uri(Nav.Uri).Query;
+        _runnerMode = query.Contains("runner=1", StringComparison.OrdinalIgnoreCase);
+        if (_runnerMode) return;
+
+        await Compiler.InitAsync();
+        _ready = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_runnerMode)
+        {
+            await JS.InvokeVoidAsync("level3Capstone.initEditor", _editorHost, _code);
+            _editorReady = true;
+        }
+    }
+
+    private async Task PullCode()
+    {
+        if (_editorReady)
+        {
+            _code = await JS.InvokeAsync<string>("level3Capstone.getValue");
+        }
+    }
+
+    private async Task ShowMarkers()
+    {
+        var markers = _result?.Errors
+            .Where(e => e.Line is not null)
+            .Select(e => new { line = e.Line, column = e.Column, message = e.Raw })
+            ?? Enumerable.Empty<object>();
+        await JS.InvokeVoidAsync("level3Capstone.setMarkers", markers);
+    }
+
+    private IEnumerable<(Milestone m, MilestoneResult c)> Pairs()
+        => _checks is null
+            ? Enumerable.Empty<(Milestone, MilestoneResult)>()
+            : Milestones.Zip(_checks, (m, c) => (m, c));
+
+    private int HintLevel(int id) => _hintLevels.TryGetValue(id, out var v) ? v : 0;
+
+    private void RevealHint(int id)
+    {
+        var current = HintLevel(id);
+        var max = Milestones.First(m => m.Id == id).Hints.Length;
+        if (current < max) _hintLevels[id] = current + 1;
+    }
+
+    private void ToggleWhy(CompileError e)
+    {
+        if (!_openWhy.Add(e)) _openWhy.Remove(e);
+    }
+
+    private async Task ToggleMilestoneWhy(int id)
+    {
+        if (!_openMilestoneWhy.Add(id))
+        {
+            _openMilestoneWhy.Remove(id);
+            return;
+        }
+
+        var milestone = Milestones.First(m => m.Id == id);
+        if (milestone.Diagram is not null && !_milestoneSvg.ContainsKey(id))
+        {
+            _milestoneSvg[id] = await JS.InvokeAsync<string>("level3Capstone.renderMermaid", milestone.Diagram);
+        }
+
+        // Open the explanation and point at the code at the same time.
+        var result = _checks?.FirstOrDefault(c => c.Id == id);
+        if (result is { Anchors.Count: > 0 })
+        {
+            await JS.InvokeVoidAsync("level3Capstone.highlightSpans", result.Anchors);
+        }
+    }
+
+    private async Task ShowWhere(MilestoneResult result)
+    {
+        if (result.Anchors.Count > 0)
+        {
+            await JS.InvokeVoidAsync("level3Capstone.highlightSpans", result.Anchors);
+        }
+    }
+
+    private async Task Run()
+    {
+        await PullCode();
+        _busy = true;
+        _result = null;
+        _openWhy.Clear();
+        await JS.InvokeVoidAsync("level3Capstone.clearHighlights");
+        await Task.Yield();
+        _result = await Compiler.RunAsync(_code);
+        _busy = false;
+        await ShowMarkers();
+    }
+
+    private async Task CheckProgress()
+    {
+        await PullCode();
+        _busy = true;
+        _openMilestoneWhy.Clear();
+        _milestoneSvg.Clear();
+        await JS.InvokeVoidAsync("level3Capstone.clearHighlights");
+        await Task.Yield();
+        var checks = StructuralChecks.Run(_code);
+        _checks = checks;
+        var nowAll = checks.All(c => c.Passed);
+        if (nowAll && !_allPassed)
+        {
+            await AwardXp();
+        }
+        _allPassed = nowAll;
+        _busy = false;
+    }
+
+    private async Task AwardXp()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("level3Capstone.awardXp", 50);
+        }
+        catch
+        {
+            // XP bridge is optional; ignore if not embedded.
+        }
+    }
+
+    private async Task GiveUp()
+    {
+        _code = Capstone.ReferenceSolution;
+        _result = null;
+        _gaveUp = true;
+        await JS.InvokeVoidAsync("level3Capstone.setValue", _code);
+        await JS.InvokeVoidAsync("level3Capstone.setMarkers", Enumerable.Empty<object>());
+        await JS.InvokeVoidAsync("level3Capstone.clearHighlights");
+    }
+
+    private async Task Reset()
+    {
+        _code = Capstone.StarterCode;
+        _result = null;
+        _checks = null;
+        _allPassed = false;
+        _gaveUp = false;
+        _hintLevels.Clear();
+        _openMilestoneWhy.Clear();
+        _milestoneSvg.Clear();
+        await JS.InvokeVoidAsync("level3Capstone.setValue", _code);
+        await JS.InvokeVoidAsync("level3Capstone.setMarkers", Enumerable.Empty<object>());
+        await JS.InvokeVoidAsync("level3Capstone.clearHighlights");
+    }
+}

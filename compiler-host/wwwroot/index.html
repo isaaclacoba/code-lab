@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Level 3: SOLID in practice</title>
+    <base href="./" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="Level3Capstone.styles.css" rel="stylesheet" />
+</head>
+
+<body>
+    <div id="app">
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+    <script>
+        if (window.mermaid) {
+            window.mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict" });
+        }
+    </script>
+    <script>
+        const MONACO_BASE = "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs";
+
+        // Cross-origin web workers from a CDN must be proxied through a blob.
+        window.MonacoEnvironment = {
+            getWorkerUrl: function () {
+                return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
+                    self.MonacoEnvironment = { baseUrl: '${MONACO_BASE.replace('/vs', '')}/' };
+                    importScripts('${MONACO_BASE}/base/worker/workerMain.js');
+                `)}`;
+            }
+        };
+
+        let _monacoReady = null;
+        function ensureMonaco() {
+            if (!_monacoReady) {
+                _monacoReady = new Promise(function (resolve) {
+                    require.config({ paths: { vs: MONACO_BASE } });
+                    require(["vs/editor/editor.main"], function () {
+                        registerCSharpCompletions();
+                        resolve();
+                    });
+                });
+            }
+            return _monacoReady;
+        }
+
+        // Curated, language-aware suggestions for C# (keywords, common BCL
+        // members, and a few snippets). Runs fully client-side - no language
+        // server needed, so it works on static hosting like GitHub Pages.
+        function registerCSharpCompletions() {
+            const keywords = [
+                "public", "private", "protected", "internal", "static", "void", "class",
+                "interface", "abstract", "virtual", "override", "sealed", "readonly",
+                "const", "new", "return", "if", "else", "for", "foreach", "while", "do",
+                "switch", "case", "break", "continue", "using", "namespace", "this",
+                "base", "null", "true", "false", "var", "int", "string", "bool", "double",
+                "float", "decimal", "char", "object", "enum", "struct", "try", "catch",
+                "finally", "throw", "get", "set", "in", "out", "ref", "params", "async", "await"
+            ];
+
+            const members = [
+                { label: "Console.WriteLine", insert: "Console.WriteLine($0);", doc: "Write a line to the console" },
+                { label: "Console.Write", insert: "Console.Write($0);", doc: "Write to the console" },
+                { label: "Console.ReadLine", insert: "Console.ReadLine()", doc: "Read a line from the console" },
+                { label: "string.IsNullOrEmpty", insert: "string.IsNullOrEmpty($0)", doc: "Check for null or empty string" },
+                { label: "List<T>", insert: "List<$0>", doc: "Generic list" },
+                { label: "Dictionary<TKey, TValue>", insert: "Dictionary<$1, $2>", doc: "Generic dictionary" },
+                { label: "ToString", insert: "ToString()", doc: "Convert to string" }
+            ];
+
+            const snippets = [
+                { label: "class", insert: "public class ${1:Name}\n{\n    $0\n}", doc: "Class definition" },
+                { label: "interface", insert: "public interface I${1:Name}\n{\n    $0\n}", doc: "Interface definition" },
+                { label: "ctor", insert: "public ${1:Type}()\n{\n    $0\n}", doc: "Constructor" },
+                { label: "method", insert: "public ${1:void} ${2:Name}()\n{\n    $0\n}", doc: "Method" },
+                { label: "prop", insert: "public ${1:string} ${2:Name} { get; set; }", doc: "Auto property" },
+                { label: "foreach", insert: "foreach (var ${1:item} in ${2:items})\n{\n    $0\n}", doc: "Foreach loop" },
+                { label: "ctorinject", insert: "private readonly ${1:IType} _${2:dep};\n\npublic ${3:Class}(${1:IType} ${2:dep})\n{\n    _${2:dep} = ${2:dep};\n}", doc: "Constructor injection" }
+            ];
+
+            monaco.languages.registerCompletionItemProvider("csharp", {
+                provideCompletionItems: function (model, position) {
+                    const word = model.getWordUntilPosition(position);
+                    const range = {
+                        startLineNumber: position.lineNumber,
+                        endLineNumber: position.lineNumber,
+                        startColumn: word.startColumn,
+                        endColumn: word.endColumn
+                    };
+                    const K = monaco.languages.CompletionItemKind;
+                    const suggestions = [];
+
+                    keywords.forEach(function (kw) {
+                        suggestions.push({ label: kw, kind: K.Keyword, insertText: kw, range: range });
+                    });
+                    members.forEach(function (m) {
+                        suggestions.push({
+                            label: m.label, kind: K.Method, detail: m.doc,
+                            insertText: m.insert,
+                            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                            range: range
+                        });
+                    });
+                    snippets.forEach(function (s) {
+                        suggestions.push({
+                            label: s.label, kind: K.Snippet, detail: s.doc,
+                            insertText: s.insert,
+                            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                            range: range
+                        });
+                    });
+                    return { suggestions: suggestions };
+                }
+            });
+        }
+
+        window.level3Capstone = {
+            editor: null,
+            awardXp: function (amount) {
+                try {
+                    if (window.parent && window.parent !== window) {
+                        window.parent.postMessage({ type: "level3-xp", amount: amount }, "*");
+                    }
+                } catch (e) {
+                    // Ignore cross-origin issues when not embedded.
+                }
+            },
+            initEditor: async function (host, value) {
+                await ensureMonaco();
+                this.editor = monaco.editor.create(host, {
+                    value: value,
+                    language: "csharp",
+                    theme: "vs-dark",
+                    automaticLayout: true,
+                    minimap: { enabled: false },
+                    fontSize: 14,
+                    lineNumbers: "on",
+                    tabSize: 4,
+                    insertSpaces: true,
+                    scrollBeyondLastLine: false,
+                    autoClosingBrackets: "always",
+                    autoClosingQuotes: "always",
+                    autoIndent: "full",
+                    formatOnPaste: true,
+                    glyphMargin: true,
+                    bracketPairColorization: { enabled: true }
+                });
+            },
+            getValue: function () {
+                return this.editor ? this.editor.getValue() : "";
+            },
+            setValue: function (value) {
+                if (this.editor) { this.editor.setValue(value); }
+            },
+            setMarkers: function (errors) {
+                if (!this.editor) { return; }
+                const model = this.editor.getModel();
+                const markers = (errors || []).map(function (e) {
+                    return {
+                        severity: monaco.MarkerSeverity.Error,
+                        message: e.message,
+                        startLineNumber: e.line || 1,
+                        startColumn: e.column || 1,
+                        endLineNumber: e.line || 1,
+                        endColumn: (e.column || 1) + 1
+                    };
+                });
+                monaco.editor.setModelMarkers(model, "csharp", markers);
+            },
+            decorations: [],
+            highlightSpans: function (spans) {
+                if (!this.editor) { return; }
+                const list = (spans || []).map(function (s) {
+                    const target = s.kind === "target";
+                    return {
+                        range: new monaco.Range(s.startLine, s.startCol, s.endLine, s.endCol),
+                        options: {
+                            className: target ? "glow-target" : "glow-problem",
+                            glyphMarginClassName: target ? "glyph-target" : "glyph-problem",
+                            glyphMarginHoverMessage: { value: s.label || "" },
+                            hoverMessage: { value: s.label || "" },
+                            overviewRuler: {
+                                color: target ? "#2f9e86" : "#e06c75",
+                                position: monaco.editor.OverviewRulerLane.Center
+                            }
+                        }
+                    };
+                });
+                this.decorations = this.editor.deltaDecorations(this.decorations || [], list);
+                if (list.length) { this.editor.revealRangeInCenter(list[0].range); }
+            },
+            clearHighlights: function () {
+                if (!this.editor) { return; }
+                this.decorations = this.editor.deltaDecorations(this.decorations || [], []);
+            },
+            renderMermaid: async function (definition) {
+                if (!window.mermaid || !definition) { return ""; }
+                try {
+                    const id = "cap-diagram-" + Math.random().toString(36).slice(2);
+                    const { svg } = await window.mermaid.render(id, definition);
+                    return svg;
+                } catch (e) {
+                    return "";
+                }
+            }
+        };
+    </script>
+    <script>
+        // Headless bridge host: when this app is embedded as a hidden iframe with
+        // ?runner=1, RunnerBridge calls codeRunnerHost.init with a .NET reference.
+        // We relay run requests from the parent window to the compiler and post
+        // results back. Only same-origin parents are honoured.
+        window.codeRunnerHost = {
+            _ref: null,
+            init: function (dotNetRef) {
+                this._ref = dotNetRef;
+                window.addEventListener("message", async function (event) {
+                    if (event.origin !== window.location.origin) return;
+                    const data = event.data || {};
+                    if (data.type !== "coderunner:run") return;
+
+                    let result;
+                    try {
+                        result = await dotNetRef.invokeMethodAsync("Run", data.code || "");
+                    } catch (err) {
+                        result = { compiled: false, output: "", runtimeError: String(err), errors: [] };
+                    }
+                    const target = event.source || window.parent;
+                    if (target) target.postMessage({ type: "coderunner:result", id: data.id, result: result }, event.origin);
+                });
+
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({ type: "coderunner:ready" }, window.location.origin);
+                }
+            }
+        };
+    </script>
+
+    <!-- Blazor bootstrap loads LAST, after window.level3Capstone and
+         window.codeRunnerHost are defined, so JS interop calls during the
+         component's first render cannot race ahead of the host object. -->
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+
+</html>
