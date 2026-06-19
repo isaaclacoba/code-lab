@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Code Lab - example</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+    />
+    <link rel="stylesheet" href="../dist/code-lab.css" />
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 780px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      h2 {
+        margin-top: 2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Code Lab</h1>
+
+    <h2>1. Read-only with a guided tour</h2>
+    <div id="demo-tour"></div>
+
+    <h2>2. Editable (textarea)</h2>
+    <div id="demo-edit"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-csharp.min.js"></script>
+    <script src="../dist/code-lab.global.js"></script>
+    <script>
+      const { CodeLab: Lab } = window.CodeLab;
+
+      Lab.create(document.getElementById("demo-tour"), {
+        code: [
+          "public abstract class Animal { public abstract string Speak(); }",
+          'public class Dog : Animal { public override string Speak() => "Woof"; }',
+          'public class Cat : Animal { public override string Speak() => "Meow"; }',
+        ].join("\n"),
+        language: "csharp",
+        tour: [
+          { text: "Animal declares the shape: every Animal can Speak().", lines: 1 },
+          { text: "Dog answers in its own way.", lines: 2 },
+          { text: "Cat answers differently. Same call, many behaviours.", lines: 3 },
+        ],
+      });
+
+      Lab.create(document.getElementById("demo-edit"), {
+        code: 'Console.WriteLine("edit me");',
+        language: "csharp",
+        editable: true,
+        editor: "textarea",
+      });
+    </script>
+  </body>
+</html>

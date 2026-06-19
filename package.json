@@ -1,0 +1,56 @@
+{
+  "name": "code-lab",
+  "version": "0.1.0",
+  "description": "Embeddable code component: read-only or editable code, a line-by-line guided tour, and a pluggable compile/run backend.",
+  "type": "module",
+  "main": "./dist/code-lab.cjs",
+  "module": "./dist/code-lab.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/code-lab.js",
+      "require": "./dist/code-lab.cjs"
+    },
+    "./code-lab.css": "./dist/code-lab.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "code",
+    "editor",
+    "playground",
+    "tour",
+    "walkthrough",
+    "compiler",
+    "wasm",
+    "education"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0"
+  },
+  "peerDependencies": {
+    "monaco-editor": "^0.52.0",
+    "prismjs": "^1.29.0"
+  },
+  "peerDependenciesMeta": {
+    "monaco-editor": {
+      "optional": true
+    },
+    "prismjs": {
+      "optional": true
+    }
+  }
+}

@@ -1,0 +1,319 @@
+/* Code Lab styles. All class names are namespaced under `cl-`. The host page
+   may override the CSS variables below to theme the component. */
+
+.cl-root {
+  --cl-ink: #1b1d27;
+  --cl-ink-soft: #5b6377;
+  --cl-accent: #f0b429;
+  --cl-code-bg: #1d2130;
+  --cl-code-fg: #e6e9f0;
+  --cl-line: #2f3440;
+  --cl-radius: 12px;
+  --cl-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  display: grid;
+  gap: 0.7rem;
+}
+
+/* -------------------------------------------------------------------- buttons */
+.cl-btn {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--cl-line);
+  background: #f3ead2;
+  color: var(--cl-ink);
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.cl-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.cl-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cl-btn.cl-primary {
+  background: var(--cl-accent);
+  border-color: var(--cl-accent);
+}
+
+.cl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* -------------------------------------------------------------------- editors */
+.cl-editor-host {
+  min-height: 1.5rem;
+}
+
+.cl-readonly {
+  margin: 0;
+  padding: 0.7rem 0.9rem;
+  background: var(--cl-code-bg);
+  color: var(--cl-code-fg);
+  border-radius: var(--cl-radius);
+  overflow: auto;
+  font-family: var(--cl-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.cl-ta-wrap {
+  position: relative;
+  background: var(--cl-code-bg);
+  border-radius: var(--cl-radius);
+  overflow: hidden;
+}
+
+.cl-ta-underlay,
+.cl-ta-input {
+  margin: 0;
+  padding: 0.7rem 0.9rem;
+  font-family: var(--cl-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 4;
+}
+
+.cl-ta-underlay {
+  position: absolute;
+  inset: 0;
+  color: var(--cl-code-fg);
+  pointer-events: none;
+}
+
+.cl-ta-input {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 8rem;
+  border: 0;
+  resize: vertical;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--cl-accent);
+  outline: none;
+}
+
+/* -------------------------------------------------------------------- output */
+.cl-output {
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  background: var(--cl-code-bg);
+  color: #d8f0df;
+  border: 1px solid var(--cl-line);
+  border-radius: 10px;
+  font-family: var(--cl-mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cl-output.is-error {
+  color: #ffd2d2;
+  border-color: #6b2b2b;
+}
+
+.cl-runner-frame {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------- tour */
+.cl-tour-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(14, 16, 22, 0.62);
+  backdrop-filter: blur(2px);
+  z-index: 900;
+  animation: cl-tour-fade 200ms ease-out;
+}
+
+.cl-tour-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(760px, calc(100vw - 28px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: #fffef9;
+  border: 1px solid #e6d3a0;
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(12, 16, 26, 0.4);
+  z-index: 910;
+  animation: cl-tour-pop 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes cl-tour-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes cl-tour-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 12px)) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.cl-tour-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem 0.6rem;
+}
+
+.cl-tour-title {
+  margin: 0;
+  font-size: 0.98rem;
+  color: var(--cl-ink);
+}
+
+.cl-tour-close {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+}
+
+.cl-tour-code-pane {
+  margin: 0 1rem;
+  padding: 0.55rem 0;
+  background: var(--cl-code-bg);
+  border-radius: var(--cl-radius);
+  overflow: auto;
+  font-family: var(--cl-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.cl-tour-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0 0.9rem;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.cl-tour-ln {
+  flex: 0 0 auto;
+  width: 1.6rem;
+  text-align: right;
+  color: #5b6377;
+  user-select: none;
+}
+
+.cl-tour-code {
+  white-space: pre;
+  color: var(--cl-code-fg);
+  background: none;
+  padding: 0;
+}
+
+.cl-tour-line.is-dim {
+  opacity: 0.32;
+}
+
+.cl-tour-line.is-active {
+  background: rgba(240, 180, 41, 0.16);
+  box-shadow: inset 3px 0 0 var(--cl-accent);
+  animation: cl-tour-line-in 260ms ease-out;
+}
+
+@keyframes cl-tour-line-in {
+  from {
+    background: rgba(240, 180, 41, 0.42);
+  }
+  to {
+    background: rgba(240, 180, 41, 0.16);
+  }
+}
+
+.cl-tour-narration {
+  margin: 0;
+  padding: 0.85rem 1.1rem 0.4rem;
+  color: var(--cl-ink);
+  font-size: 0.96rem;
+  line-height: 1.5;
+  min-height: 3.2rem;
+}
+
+.cl-tour-narration.is-changing {
+  animation: cl-tour-narrate 240ms ease-out;
+}
+
+@keyframes cl-tour-narrate {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.cl-tour-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.5rem 1rem 0.95rem;
+}
+
+.cl-tour-footer .cl-btn {
+  flex: 0 0 auto;
+}
+
+.cl-tour-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 auto;
+}
+
+.cl-tour-dot {
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid #d8c285;
+  background: #f3ead2;
+  cursor: pointer;
+  transition: background 120ms, transform 120ms;
+}
+
+.cl-tour-dot.is-active {
+  background: var(--cl-accent);
+  transform: scale(1.25);
+}
+
+.cl-tour-counter {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  color: var(--cl-ink-soft);
+}
