@@ -24,6 +24,8 @@ export interface CodeRunner {
   run(code: string): Promise<RunResult>;
   /** Optional warm-up so the first real run is fast. */
   preload?(): Promise<void>;
+  /** Optional deeper warm-up: load the runtime and JIT the backend. */
+  warm?(): Promise<void>;
 }
 
 /** Turns a single line of source into HTML. */

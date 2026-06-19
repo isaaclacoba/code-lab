@@ -4,11 +4,19 @@ export interface RoslynIframeRunnerConfig {
   /** URL of the compiler host page (a Blazor WASM app embedding the contract).
    *  Example: "level3-app/index.html?runner=1". Must be same-origin. */
   url: string;
-  /** Max wait for the host to signal ready, in ms. Default 30000. */
+  /** Max wait for the host to signal ready, in ms. Default 120000 (cold WASM). */
   readyTimeout?: number;
-  /** Max wait for a single run, in ms. Default 20000. */
+  /** Max wait for a single run, in ms. Default 60000. */
   runTimeout?: number;
+  /** Start the runtime download and a throwaway compile on construction so the
+   *  first real run skips the cold start. Default true. */
+  autoWarm?: boolean;
+  /** Complete program compiled during warm-up to JIT the backend. */
+  warmProgram?: string;
 }
+
+const DEFAULT_WARM_PROGRAM =
+  "public class __Warm { public static void Main() { } }";
 
 interface Pending {
   resolve: (r: RunResult) => void;
@@ -29,17 +37,25 @@ export class RoslynIframeRunner implements CodeRunner {
   private url: string;
   private readyTimeout: number;
   private runTimeout: number;
+  private warmProgram: string;
 
   private iframe: HTMLIFrameElement | null = null;
   private readyPromise: Promise<void> | null = null;
+  private warmPromise: Promise<void> | null = null;
   private seq = 0;
   private pending = new Map<number, Pending>();
   private onMessage = (e: MessageEvent) => this.handleMessage(e);
 
   constructor(config: RoslynIframeRunnerConfig) {
     this.url = config.url;
-    this.readyTimeout = config.readyTimeout ?? 30000;
-    this.runTimeout = config.runTimeout ?? 20000;
+    this.readyTimeout = config.readyTimeout ?? 120000;
+    this.runTimeout = config.runTimeout ?? 60000;
+    this.warmProgram = config.warmProgram ?? DEFAULT_WARM_PROGRAM;
+    if (config.autoWarm ?? true) {
+      // Best effort: kick off the cold start now so it overlaps with the user
+      // reading the page. Consumers can await warm() to drive UI state.
+      void this.warm().catch(() => {});
+    }
   }
 
   private handleMessage(event: MessageEvent): void {
@@ -88,6 +104,17 @@ export class RoslynIframeRunner implements CodeRunner {
     await this.ensureFrame();
   }
 
+  /** Load the runtime and JIT the backend with a throwaway compile so the first
+   *  real run is fast. Idempotent: repeated calls share one warm-up. */
+  async warm(): Promise<void> {
+    if (this.warmPromise) return this.warmPromise;
+    this.warmPromise = (async () => {
+      await this.ensureFrame();
+      await this.run(this.warmProgram);
+    })();
+    return this.warmPromise;
+  }
+
   async run(code: string): Promise<RunResult> {
     await this.ensureFrame();
     const id = ++this.seq;
@@ -111,5 +138,6 @@ export class RoslynIframeRunner implements CodeRunner {
     this.iframe?.remove();
     this.iframe = null;
     this.readyPromise = null;
+    this.warmPromise = null;
   }
 }
