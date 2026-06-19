@@ -3,7 +3,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
-namespace Level3Capstone.Services;
+namespace CodeLab.Host;
 
 public class CompileResult
 {

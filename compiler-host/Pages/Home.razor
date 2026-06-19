@@ -1,7 +1,8 @@
 @page "/"
 @page "/index.html"
-@using Level3Capstone.Services
+@using CodeLab.Host
 @inject CompilerService Compiler
+@inject IExercise Exercise
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 
@@ -13,28 +14,22 @@ else
 {
 <div class="capstone">
     <header class="cap-head">
-        <p class="eyebrow">Level 3 capstone</p>
-        <h1>SOLID in practice</h1>
-        <p class="lead">Refactor a small, working program one step at a time. It compiles and runs right here in your browser.</p>
+        <h1>@Exercise.Title</h1>
+        <p class="lead">@Exercise.Lead</p>
         <p class="back-link"><a href="../index.html">Back to level selector</a></p>
     </header>
 
     <section class="brief">
-        <h3>The goal</h3>
-        <p>
-            This <code>TestRunner</code> works, but it does three jobs at once and is welded to the console.
-            Reshape it so each job lives where it belongs. You do not have to do it all at once - chip away,
-            and watch the milestones below fill in as you go.
-        </p>
+        <p>@Exercise.Brief</p>
     </section>
 
     <section class="progress-wrap">
         <div class="progress-head">
             <strong>Progress</strong>
-            <span>@PassedCount / @Milestones.Length</span>
+            <span>@PassedCount / @Milestones.Count</span>
         </div>
         <div class="progress-bar">
-            <div class="progress-fill" style="width:@(PassedCount * 100 / Milestones.Length)%"></div>
+            <div class="progress-fill" style="width:@(PassedCount * 100 / Math.Max(1, Milestones.Count))%"></div>
         </div>
     </section>
 
@@ -180,10 +175,10 @@ else
 }
 
 @code {
-    private static Milestone[] Milestones => Capstone.Milestones;
+    private IReadOnlyList<Milestone> Milestones => Exercise.Milestones;
 
     private bool _runnerMode;
-    private string _code = Capstone.StarterCode;
+    private string _code = "";
     private CompileResult? _result;
     private IReadOnlyList<MilestoneResult>? _checks;
     private readonly Dictionary<int, int> _hintLevels = new();
@@ -205,6 +200,7 @@ else
         _runnerMode = query.Contains("runner=1", StringComparison.OrdinalIgnoreCase);
         if (_runnerMode) return;
 
+        _code = Exercise.StarterCode;
         await Compiler.InitAsync();
         _ready = true;
     }
@@ -213,7 +209,7 @@ else
     {
         if (firstRender && !_runnerMode)
         {
-            await JS.InvokeVoidAsync("level3Capstone.initEditor", _editorHost, _code);
+            await JS.InvokeVoidAsync("codeLabHost.initEditor", _editorHost, _code);
             _editorReady = true;
         }
     }
@@ -222,7 +218,7 @@ else
     {
         if (_editorReady)
         {
-            _code = await JS.InvokeAsync<string>("level3Capstone.getValue");
+            _code = await JS.InvokeAsync<string>("codeLabHost.getValue");
         }
     }
 
@@ -232,7 +228,7 @@ else
             .Where(e => e.Line is not null)
             .Select(e => new { line = e.Line, column = e.Column, message = e.Raw })
             ?? Enumerable.Empty<object>();
-        await JS.InvokeVoidAsync("level3Capstone.setMarkers", markers);
+        await JS.InvokeVoidAsync("codeLabHost.setMarkers", markers);
     }
 
     private IEnumerable<(Milestone m, MilestoneResult c)> Pairs()
@@ -265,14 +261,14 @@ else
         var milestone = Milestones.First(m => m.Id == id);
         if (milestone.Diagram is not null && !_milestoneSvg.ContainsKey(id))
         {
-            _milestoneSvg[id] = await JS.InvokeAsync<string>("level3Capstone.renderMermaid", milestone.Diagram);
+            _milestoneSvg[id] = await JS.InvokeAsync<string>("codeLabHost.renderMermaid", milestone.Diagram);
         }
 
         // Open the explanation and point at the code at the same time.
         var result = _checks?.FirstOrDefault(c => c.Id == id);
         if (result is { Anchors.Count: > 0 })
         {
-            await JS.InvokeVoidAsync("level3Capstone.highlightSpans", result.Anchors);
+            await JS.InvokeVoidAsync("codeLabHost.highlightSpans", result.Anchors);
         }
     }
 
@@ -280,7 +276,7 @@ else
     {
         if (result.Anchors.Count > 0)
         {
-            await JS.InvokeVoidAsync("level3Capstone.highlightSpans", result.Anchors);
+            await JS.InvokeVoidAsync("codeLabHost.highlightSpans", result.Anchors);
         }
     }
 
@@ -290,7 +286,7 @@ else
         _busy = true;
         _result = null;
         _openWhy.Clear();
-        await JS.InvokeVoidAsync("level3Capstone.clearHighlights");
+        await JS.InvokeVoidAsync("codeLabHost.clearHighlights");
         await Task.Yield();
         _result = await Compiler.RunAsync(_code);
         _busy = false;
@@ -303,11 +299,11 @@ else
         _busy = true;
         _openMilestoneWhy.Clear();
         _milestoneSvg.Clear();
-        await JS.InvokeVoidAsync("level3Capstone.clearHighlights");
+        await JS.InvokeVoidAsync("codeLabHost.clearHighlights");
         await Task.Yield();
-        var checks = StructuralChecks.Run(_code);
+        var checks = Exercise.Check(_code);
         _checks = checks;
-        var nowAll = checks.All(c => c.Passed);
+        var nowAll = checks.Count > 0 && checks.All(c => c.Passed);
         if (nowAll && !_allPassed)
         {
             await AwardXp();
@@ -320,7 +316,7 @@ else
     {
         try
         {
-            await JS.InvokeVoidAsync("level3Capstone.awardXp", 50);
+            await JS.InvokeVoidAsync("codeLabHost.awardXp", 50);
         }
         catch
         {
@@ -330,17 +326,17 @@ else
 
     private async Task GiveUp()
     {
-        _code = Capstone.ReferenceSolution;
+        _code = Exercise.ReferenceSolution;
         _result = null;
         _gaveUp = true;
-        await JS.InvokeVoidAsync("level3Capstone.setValue", _code);
-        await JS.InvokeVoidAsync("level3Capstone.setMarkers", Enumerable.Empty<object>());
-        await JS.InvokeVoidAsync("level3Capstone.clearHighlights");
+        await JS.InvokeVoidAsync("codeLabHost.setValue", _code);
+        await JS.InvokeVoidAsync("codeLabHost.setMarkers", Enumerable.Empty<object>());
+        await JS.InvokeVoidAsync("codeLabHost.clearHighlights");
     }
 
     private async Task Reset()
     {
-        _code = Capstone.StarterCode;
+        _code = Exercise.StarterCode;
         _result = null;
         _checks = null;
         _allPassed = false;
@@ -348,8 +344,8 @@ else
         _hintLevels.Clear();
         _openMilestoneWhy.Clear();
         _milestoneSvg.Clear();
-        await JS.InvokeVoidAsync("level3Capstone.setValue", _code);
-        await JS.InvokeVoidAsync("level3Capstone.setMarkers", Enumerable.Empty<object>());
-        await JS.InvokeVoidAsync("level3Capstone.clearHighlights");
+        await JS.InvokeVoidAsync("codeLabHost.setValue", _code);
+        await JS.InvokeVoidAsync("codeLabHost.setMarkers", Enumerable.Empty<object>());
+        await JS.InvokeVoidAsync("codeLabHost.clearHighlights");
     }
 }

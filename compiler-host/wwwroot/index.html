@@ -133,7 +133,7 @@
             });
         }
 
-        window.level3Capstone = {
+        window.codeLabHost = {
             editor: null,
             awardXp: function (amount) {
                 try {
@@ -255,7 +255,7 @@
         };
     </script>
 
-    <!-- Blazor bootstrap loads LAST, after window.level3Capstone and
+    <!-- Blazor bootstrap loads LAST, after window.codeLabHost and
          window.codeRunnerHost are defined, so JS interop calls during the
          component's first render cannot race ahead of the host object. -->
     <script src="_framework/blazor.webassembly.js"></script>

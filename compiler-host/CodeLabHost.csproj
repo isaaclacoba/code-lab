@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <WasmEnableWebcil>false</WasmEnableWebcil>
+    <PublishTrimmed>false</PublishTrimmed>
+    <RootNamespace>CodeLab.Host</RootNamespace>
+    <AssemblyName>CodeLabHost</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.27" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.27" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+  </ItemGroup>
+
+  <!-- A consumer supplies its exercise by pointing ExerciseSource at a folder of
+       .cs files that implement IExercise. They compile into this host; the
+       ExerciseLoader picks them over the built-in SampleExercise. -->
+  <ItemGroup Condition="'$(ExerciseSource)' != ''">
+    <Compile Include="$(ExerciseSource)/**/*.cs">
+      <Link>Exercise/%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Compile>
+  </ItemGroup>
+
+</Project>
