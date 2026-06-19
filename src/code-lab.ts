@@ -7,6 +7,7 @@ import type {
   RunResult,
 } from "./types.js";
 import { defaultHighlighter } from "./highlighter.js";
+import { presentRun, selectRunCode } from "./core/present.js";
 import { Tour } from "./tour.js";
 import { ReadOnlyView } from "./editors/readonly.js";
 import { TextareaEditor } from "./editors/textarea.js";
@@ -124,7 +125,7 @@ export class CodeLab {
     const runner = this.opts.runner;
     if (!runner) return undefined;
 
-    const code = this.opts.runCode ?? this.getValue();
+    const code = selectRunCode(this.opts.runCode, this.getValue());
     if (this.runBtn) {
       this.runBtn.disabled = true;
       this.runBtn.textContent = this.labels.running;
@@ -134,17 +135,9 @@ export class CodeLab {
     let result: RunResult | undefined;
     try {
       result = await runner.run(code);
-      if (result.errors && result.errors.length) {
-        this.editor.setMarkers?.(result.errors);
-        this.showOutput(
-          result.errors.map((e) => e.friendly || e.raw).join("\n"),
-          true,
-        );
-      } else if (result.runtimeError) {
-        this.showOutput(`${result.output}\n${result.runtimeError}`.trim(), true);
-      } else {
-        this.showOutput(result.output || this.labels.noOutput, false);
-      }
+      const view = presentRun(result, { noOutput: this.labels.noOutput });
+      if (view.markers.length) this.editor.setMarkers?.(view.markers);
+      this.showOutput(view.text, view.isError);
       this.opts.onRun?.(result);
     } catch (err) {
       this.showOutput((err as Error).message || this.labels.runFailed, true);

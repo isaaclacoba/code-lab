@@ -1,5 +1,13 @@
 import type { Highlighter, TourStep } from "./types.js";
 import { defaultHighlighter } from "./highlighter.js";
+import { computeLineFlags, normalizeLines, splitCodeLines } from "./core/lines.js";
+import {
+  atFirst,
+  atLast,
+  counterLabel,
+  goTo,
+  makeTour,
+} from "./core/tour-state.js";
 
 interface TourState {
   steps: TourStep[];
@@ -77,8 +85,7 @@ export class Tour {
   }
 
   private normalizeLines(lines: number | number[] | undefined): number[] {
-    if (lines === undefined || lines === null) return [];
-    return Array.isArray(lines) ? lines : [lines];
+    return normalizeLines(lines);
   }
 
   private buildDom(): void {
@@ -138,7 +145,7 @@ export class Tour {
   }
 
   private renderCode(code: string): void {
-    const lines = code.replace(/\n+$/, "").split("\n");
+    const lines = splitCodeLines(code);
     this.codePane!.innerHTML = "";
     this.state!.lineEls = lines.map((text, i) => {
       const row = document.createElement("div");
@@ -192,26 +199,30 @@ export class Tour {
   private applyStep(): void {
     const step = this.state!.steps[this.state!.index];
     const active = this.normalizeLines(step.lines);
+    const flags = computeLineFlags(active, this.state!.lineEls.length);
 
     this.state!.lineEls.forEach((el, i) => {
-      const isActive = active.includes(i + 1);
-      el.classList.toggle("is-active", isActive);
-      el.classList.toggle("is-dim", active.length > 0 && !isActive);
+      el.classList.toggle("is-active", flags[i].active);
+      el.classList.toggle("is-dim", flags[i].dim);
     });
 
+    const model = makeTour(this.state!.steps.length, this.state!.index);
     this.narration!.textContent = step.text || "";
     this.pulseNarration();
-    this.counter!.textContent = `${this.state!.index + 1} / ${this.state!.steps.length}`;
-    this.prevBtn!.disabled = this.state!.index === 0;
-    this.nextBtn!.disabled = this.state!.index === this.state!.steps.length - 1;
+    this.counter!.textContent = counterLabel(model);
+    this.prevBtn!.disabled = atFirst(model);
+    this.nextBtn!.disabled = atLast(model);
     this.renderDots();
 
     if (active.length) this.scrollWithin(this.state!.lineEls[active[0] - 1]);
   }
 
   private go(index: number): void {
-    if (!this.state || index < 0 || index >= this.state.steps.length) return;
-    this.state.index = index;
+    if (!this.state) return;
+    const current = makeTour(this.state.steps.length, this.state.index);
+    const target = goTo(current, index);
+    if (target === current) return;
+    this.state.index = target.index;
     this.applyStep();
   }
 

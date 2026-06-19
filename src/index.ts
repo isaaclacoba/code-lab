@@ -16,6 +16,26 @@ export {
   defaultHighlighter,
 } from "./highlighter.js";
 
+// DOM-free core helpers, exported so they can be reused and tested directly.
+export {
+  normalizeLines,
+  splitCodeLines,
+  computeLineFlags,
+} from "./core/lines.js";
+export type { LineFlags } from "./core/lines.js";
+export { presentRun, selectRunCode } from "./core/present.js";
+export type { RunPresentation, PresentLabels } from "./core/present.js";
+export {
+  makeTour,
+  goTo,
+  next,
+  prev,
+  atFirst,
+  atLast,
+  counterLabel,
+} from "./core/tour-state.js";
+export type { TourModel } from "./core/tour-state.js";
+
 export type {
   CodeLabOptions,
   CodeLabLabels,
