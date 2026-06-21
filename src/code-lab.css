@@ -267,6 +267,16 @@
   animation: cl-tour-narrate 240ms ease-out;
 }
 
+.cl-tour-narration .cl-inline-code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.86em;
+  background: #eef1f6;
+  border: 1px solid #dfe3ea;
+  border-radius: 5px;
+  padding: 0.05rem 0.32rem;
+  color: #1d2130;
+}
+
 @keyframes cl-tour-narrate {
   from {
     opacity: 0;

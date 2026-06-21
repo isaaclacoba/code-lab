@@ -15,6 +15,26 @@ interface TourState {
   lineEls: HTMLElement[];
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/** Render plain narration, turning `backtick` spans into inline <code> so a
+ *  programming term reads as code. Text without backticks is unchanged. */
+function renderInline(text: string): string {
+  return text
+    .split(/(`[^`]+`)/)
+    .map((seg) =>
+      seg.length > 1 && seg.startsWith("`") && seg.endsWith("`")
+        ? `<code class="cl-inline-code">${escapeHtml(seg.slice(1, -1))}</code>`
+        : escapeHtml(seg)
+    )
+    .join("");
+}
+
 export interface TourConfig {
   highlighter?: Highlighter;
   language?: string;
@@ -207,7 +227,7 @@ export class Tour {
     });
 
     const model = makeTour(this.state!.steps.length, this.state!.index);
-    this.narration!.textContent = step.text || "";
+    this.narration!.innerHTML = renderInline(step.text || "");
     this.pulseNarration();
     this.counter!.textContent = counterLabel(model);
     this.prevBtn!.disabled = atFirst(model);
