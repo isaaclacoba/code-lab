@@ -317,3 +317,61 @@
   font-size: 0.8rem;
   color: var(--cl-ink-soft);
 }
+
+/* Compile-error panel: capstone-quality output shared by every run surface. */
+.cl-errors {
+  border: 1px solid rgba(28, 29, 37, 0.15);
+  border-left: 4px solid #9b2c2c;
+  border-radius: 14px;
+  padding: 0.9rem 1.1rem;
+  background: rgba(155, 44, 44, 0.06);
+}
+
+.cl-errors h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.cl-errors-note {
+  margin: 0 0 0.6rem;
+  color: #7a3a12;
+  font-family: var(--cl-font-sans, "Space Grotesk", system-ui, sans-serif);
+  font-size: 0.9rem;
+}
+
+.cl-errors ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.cl-errors li {
+  color: #9b2c2c;
+  font-family: var(--cl-font-mono, "IBM Plex Mono", "Consolas", monospace);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.cl-error-loc {
+  display: inline-block;
+  margin-bottom: 0.15rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 6px;
+  background: #9b2c2c;
+  color: #fff;
+  font-family: var(--cl-font-sans, "Space Grotesk", system-ui, sans-serif);
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+
+.cl-error-friendly {
+  display: block;
+  color: #7a3a12;
+  font-family: var(--cl-font-sans, "Space Grotesk", system-ui, sans-serif);
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+
+.cl-error-raw {
+  display: block;
+  opacity: 0.85;
+}

@@ -27,6 +27,8 @@ export {
 export type { LineFlags } from "./core/lines.js";
 export { presentRun, selectRunCode } from "./core/present.js";
 export type { RunPresentation, PresentLabels } from "./core/present.js";
+export { renderErrorPanel, showErrorPanel } from "./dom/error-panel.js";
+export type { ErrorPanelLabels } from "./dom/error-panel.js";
 export {
   makeTour,
   goTo,
