@@ -67,6 +67,25 @@ export class MonacoEditor implements EditorAdapter {
       scrollBeyondLastLine: false,
       bracketPairColorization: { enabled: true },
     });
+    if (opts.autoHeight) this.enableAutoHeight(host, opts.autoHeight);
+  }
+
+  // Drive the host height from Monaco's content height so the editor is exactly
+  // as tall as the code it holds, clamped to optional min/max bounds. Width is
+  // still handled by automaticLayout.
+  private enableAutoHeight(
+    host: HTMLElement,
+    bounds: { minHeight?: number; maxHeight?: number },
+  ): void {
+    const min = bounds.minHeight ?? 0;
+    const max = bounds.maxHeight ?? Number.POSITIVE_INFINITY;
+    const resize = (): void => {
+      const height = Math.min(max, Math.max(min, this.editor.getContentHeight()));
+      host.style.height = `${height}px`;
+      this.editor.layout({ width: host.clientWidth, height });
+    };
+    this.editor.onDidContentSizeChange(resize);
+    resize();
   }
 
   getValue(): string {

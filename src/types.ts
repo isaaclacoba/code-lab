@@ -37,6 +37,11 @@ export interface EditorMountOptions {
   value: string;
   language: string;
   readOnly: boolean;
+  /**
+   * When set, the editor grows and shrinks to fit its content instead of using
+   * a fixed host height. Heights are in pixels and clamped to the given bounds.
+   */
+  autoHeight?: { minHeight?: number; maxHeight?: number };
 }
 
 /** A pluggable editor surface: read-only view, textarea, or Monaco. */
