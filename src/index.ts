@@ -12,6 +12,50 @@ export type { LoadMonacoConfig } from "./editors/load-monaco.js";
 export { RoslynIframeRunner } from "./runners/roslyn-iframe.js";
 export type { RoslynIframeRunnerConfig } from "./runners/roslyn-iframe.js";
 
+export { MemoryViz } from "./dom/memory-viz.js";
+export type {
+  MemoryVizConfig,
+  MemoryScene,
+  RegionName,
+  PanelType,
+  PanelSpec,
+  VizLayout,
+  Step as MemoryVizStep,
+  VizAction as MemoryVizAction,
+  Frame as MemoryVizFrame,
+  Slot as MemoryVizSlot,
+  GlobalSlot as MemoryVizGlobal,
+  HeapObject as MemoryVizHeapObject,
+  Ref as MemoryVizRef,
+  BoardPart as MemoryVizBoardPart,
+  HighlightTarget as MemoryVizHighlightTarget,
+} from "./core/memory-model.js";
+export {
+  ALL_REGIONS,
+  FULL_REGIONS,
+  deriveRefs,
+  referencedIds,
+  resolveModel,
+} from "./core/memory-model.js";
+export type { CodeMark } from "./core/code-marks.js";
+export {
+  resolveMarks,
+  spansForLine,
+  markedLineHtml,
+} from "./core/code-marks.js";
+
+export { Quiz } from "./dom/quiz-view.js";
+export type { QuizStore } from "./dom/quiz-view.js";
+export type {
+  QuizConfig,
+  QuizQuestion,
+  QuizPlan,
+  QuizResult,
+  DrawnQuestion,
+  DrawnOption,
+} from "./core/quiz-model.js";
+export { drawQuiz, scoreQuiz, shuffle as shuffleQuiz, neededToPass, firstUnanswered } from "./core/quiz-model.js";
+
 export {
   PrismHighlighter,
   PlainHighlighter,

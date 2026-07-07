@@ -1,0 +1,238 @@
+// DOM-free model for the MemoryViz component. Pure data + pure functions so the
+// stack/heap/reference/GC logic can be unit-tested without a browser.
+//
+// A lesson supplies a MemoryVizConfig (code + a step script + optional actions).
+// Reference arrows are DERIVED from whatever a slot holds, and any heap object
+// nothing points to is dimmed - so lifetime/GC behaviour emerges from just
+// pushing and popping frames instead of being hand-authored per step.
+
+import type { CodeMark } from "./code-marks.js";
+export type { CodeMark } from "./code-marks.js";
+
+export interface Slot {
+  id: string;
+  addr?: string;
+  k?: string;
+  v?: string;
+  /** Heap object id this slot points to (makes it a reference). */
+  ref?: string;
+  empty?: boolean;
+  /** Spotlight this slot - e.g. a bit that just flipped or a value that changed. */
+  hot?: boolean;
+}
+
+export interface Frame {
+  id: string;
+  name?: string;
+  vars: Slot[];
+  /** Colour-code this frame (e.g. tie a process to the core running it). */
+  accent?: string;
+}
+
+export interface GlobalSlot {
+  id: string;
+  k: string;
+  v: string;
+}
+
+export interface HeapObject {
+  id: string;
+  type: string;
+  fields: Array<[string, string]>;
+  dim?: boolean;
+  glow?: boolean;
+  /** Location label shown after the type (default "heap", e.g. "disk"). */
+  at?: string;
+  /** Field names (keys) to spotlight - e.g. one whose value just changed. */
+  hotFields?: string[];
+}
+
+export interface Ref {
+  from: string;
+  to: string;
+}
+
+/** A signal travelling along a named copper trace on the board. */
+export interface Packet {
+  path: string;
+  reverse?: boolean;
+  color?: string;
+  dur?: number;
+}
+
+/** A named board component that a step can spotlight. */
+export type BoardPart = "ufs" | "soc" | "ram" | "gpio";
+
+/** Anything a step's `highlight` can spotlight: a board component or a memory
+ *  region in the die. Board and die each pick out the targets they own. */
+export type HighlightTarget = BoardPart | RegionName;
+
+/** A CPU core lit persistently, optionally tinted to match the process it runs. */
+export interface CoreLight {
+  i: number;
+  color?: string;
+}
+
+/** One snapshot of the machine + memory, plus its narration. */
+export interface Step {
+  narr: string;
+  /** Highlighted source line (0-based); negative or undefined = none. */
+  pc?: number;
+  instr?: string;
+  ram?: boolean;
+  load?: boolean;
+  codeLive?: boolean;
+  /** Replace the code panel's lines for this step (e.g. show a broken then fixed
+   *  version, or source then compiled output). Defaults to the config's `code`. */
+  code?: string[];
+  /** Spotlight part of a code line - a statement, sub-expression or operator. */
+  codeMark?: CodeMark | CodeMark[];
+  core?: number;
+  /** Cores lit persistently (e.g. to contrast one-core sharing vs two-core parallelism). */
+  cores?: CoreLight[];
+  led?: boolean;
+  glow?: string;
+  /** Board component(s) or memory region(s) to spotlight while this step shows. */
+  highlight?: HighlightTarget | HighlightTarget[];
+  packets?: Packet[];
+  globals?: GlobalSlot[];
+  /** Read-only constants region. */
+  rodata?: GlobalSlot[];
+  /** Initialized globals/statics. */
+  data?: GlobalSlot[];
+  /** Zero-initialized globals/statics. */
+  bss?: GlobalSlot[];
+  /** Memory-mapped region (e.g. shared libraries). */
+  mmap?: GlobalSlot[];
+  stack?: Frame[];
+  heap?: HeapObject[];
+  /** Only used when deriveRefs is disabled. */
+  refs?: Ref[];
+}
+
+/** An interactive verb: transforms the live model and returns the next one. */
+export interface VizAction {
+  label: string;
+  once?: boolean;
+  apply(model: Step): Step;
+}
+
+/** The memory areas of a running process, in low-to-high address order. `code`
+ *  (text), `rodata`, `data`, `bss` and `mmap` are read-as slot lists; `stack`
+ *  and `heap` have their own shapes. `global` is a friendly alias that stands in
+ *  for data + bss when a lesson does not want to split them. */
+export type RegionName =
+  | "code"
+  | "rodata"
+  | "data"
+  | "bss"
+  | "global"
+  | "heap"
+  | "stack"
+  | "mmap";
+
+/** Which parts of the visualiser a lesson shows. Adding a new scene type (bits,
+ *  pipeline, network, ...) means a new view + a new branch in the facade; the
+ *  existing views are untouched (open/closed). */
+export interface MemoryScene {
+  type?: "memory";
+  /** Show the hardware board (UFS/SoC/GPIO/traces). Default true. */
+  board?: boolean;
+  /** Which RAM-die regions to show, in order. Default all four. */
+  regions?: RegionName[];
+  /** Show the "zoom into the chip" caption. Default true. */
+  zoomTab?: boolean;
+}
+
+export const ALL_REGIONS: RegionName[] = ["code", "global", "stack", "heap"];
+
+/** The full, accurate process memory layout, low-to-high address order. */
+export const FULL_REGIONS: RegionName[] = ["code", "rodata", "data", "bss", "heap", "stack", "mmap"];
+
+/** A composable panel a lesson can place in the layout. New panel types (bits,
+ *  pipeline, network, a code editor merged from CodeLab, ...) extend this union
+ *  and get a factory in the facade; existing panels are untouched (open/closed). */
+export type PanelType = "board" | "die" | "code" | "narration" | "controls";
+
+export interface PanelSpec {
+  type: PanelType;
+  /** For a die panel: which regions it shows (defaults to the scene's regions). */
+  regions?: RegionName[];
+}
+
+/** Injectable arrangement: which panels go in the main (visual) column and which
+ *  in the side reading rail. Omit to get a sensible default from the scene. */
+export interface VizLayout {
+  visual?: PanelSpec[];
+  aside?: PanelSpec[];
+}
+
+export interface MemoryVizConfig {
+  code: string[];
+  steps: Step[];
+  actions?: VizAction[];
+  /** Derive arrows from slot refs (default true) rather than explicit step.refs. */
+  deriveRefs?: boolean;
+  /** Dim heap objects nothing points to (default true). */
+  autoDim?: boolean;
+  /** What to show. Defaults to the full board + all four regions. */
+  scene?: MemoryScene;
+  /** Explicit panel arrangement. Overrides the scene-derived default layout. */
+  layout?: VizLayout;
+  /** Override a die region's header tag (e.g. relabel STACK as "Processes in RAM"). */
+  regionTags?: Partial<Record<RegionName, string>>;
+  /** URL the final "Next lesson" button navigates to (the next lesson in the part). */
+  nextHref?: string;
+  /** CSS background for the whole widget (switch the backdrop entirely). */
+  background?: string;
+  /** Starting text scale (1 = default). The viewer can still adjust it live. */
+  fontScale?: number;
+  /** Progress: localStorage key marked done, and XP granted, when the learner
+   *  reaches the last step. Omit to track no progress for this lesson. */
+  awardedKey?: string;
+  xpKey?: string;
+  awardAmount?: number;
+  /** Board chip labels (all optional; sensible defaults). */
+  chipName?: string;
+  chipAddr?: string;
+}
+
+export interface ResolvedModel extends Step {
+  refs: Ref[];
+  heap: HeapObject[];
+}
+
+/** Every reference implied by the slots currently on the stack. */
+export function deriveRefs(stack: Frame[] = []): Ref[] {
+  const refs: Ref[] = [];
+  for (const frame of stack) {
+    for (const slot of frame.vars ?? []) {
+      if (slot.ref) refs.push({ from: slot.id, to: slot.ref });
+    }
+  }
+  return refs;
+}
+
+export function referencedIds(refs: Ref[]): Set<string> {
+  return new Set(refs.map((r) => r.to));
+}
+
+/** Turn a raw step into a fully-resolved model: arrows computed and unreferenced
+ *  heap objects dimmed, according to the config flags. Pure. */
+export function resolveModel(
+  step: Step,
+  opts: { deriveRefs: boolean; autoDim: boolean },
+): ResolvedModel {
+  const stack = step.stack ?? [];
+  const refs = opts.deriveRefs ? deriveRefs(stack) : step.refs ?? [];
+  const referenced = referencedIds(refs);
+  const heap = (step.heap ?? []).map((o) => ({
+    ...o,
+    dim: opts.autoDim ? !referenced.has(o.id) : Boolean(o.dim),
+  }));
+  return { ...step, stack, refs, heap };
+}
+
+export function deepClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
