@@ -8,6 +8,10 @@
 
 import type { CodeMark } from "./code-marks.js";
 export type { CodeMark } from "./code-marks.js";
+import type { AgentScene } from "./agent-model.js";
+export type { AgentScene } from "./agent-model.js";
+import type { AgentLoopScene } from "./agent-loop-model.js";
+export type { AgentLoopScene } from "./agent-loop-model.js";
 
 export interface Slot {
   id: string;
@@ -108,6 +112,12 @@ export interface Step {
   heap?: HeapObject[];
   /** Only used when deriveRefs is disabled. */
   refs?: Ref[];
+  /** AI-track scene for this step (the token strip, model core and next-token
+   *  fan). Rendered by an `agent` panel; ignored by the memory panels. */
+  agent?: AgentScene;
+  /** AI-track "agent loop" scene for this step (the assembled agent: model,
+   *  context, memory, tools, and the loop). Rendered by an `agentloop` panel. */
+  agentLoop?: AgentLoopScene;
 }
 
 /** An interactive verb: transforms the live model and returns the next one. */
@@ -152,12 +162,15 @@ export const FULL_REGIONS: RegionName[] = ["code", "rodata", "data", "bss", "hea
 /** A composable panel a lesson can place in the layout. New panel types (bits,
  *  pipeline, network, a code editor merged from CodeLab, ...) extend this union
  *  and get a factory in the facade; existing panels are untouched (open/closed). */
-export type PanelType = "board" | "die" | "code" | "narration" | "controls";
+export type PanelType = "board" | "die" | "code" | "narration" | "controls" | "agent" | "agentloop";
 
 export interface PanelSpec {
   type: PanelType;
   /** For a die panel: which regions it shows (defaults to the scene's regions). */
   regions?: RegionName[];
+  /** For an agent panel: whether to render the next-token probability area.
+   *  Defaults to true. Set false for lessons that never show probabilities. */
+  fan?: boolean;
 }
 
 /** Injectable arrangement: which panels go in the main (visual) column and which
@@ -165,6 +178,14 @@ export interface PanelSpec {
 export interface VizLayout {
   visual?: PanelSpec[];
   aside?: PanelSpec[];
+}
+
+/** One swatch + label in the controls legend. `round` draws a dot (a signal or
+ *  reference) instead of a square (a region). */
+export interface LegendItem {
+  sw: string;
+  label: string;
+  round?: boolean;
 }
 
 export interface MemoryVizConfig {
@@ -179,6 +200,9 @@ export interface MemoryVizConfig {
   scene?: MemoryScene;
   /** Explicit panel arrangement. Overrides the scene-derived default layout. */
   layout?: VizLayout;
+  /** Replace the controls legend (defaults to the memory/hardware legend). Pass
+   *  a scene-appropriate legend - e.g. token colours for the AI track. */
+  legend?: LegendItem[];
   /** Override a die region's header tag (e.g. relabel STACK as "Processes in RAM"). */
   regionTags?: Partial<Record<RegionName, string>>;
   /** URL the final "Next lesson" button navigates to (the next lesson in the part). */

@@ -549,6 +549,194 @@
 .cl-mv .readout { fill: #06110d; stroke: #2b6a5b; stroke-width: 1; }
 .cl-mv [data-ram].ram-active rect.chip-body { stroke: #37d3a6; }
 
+/* ===== AI-track "agent" scene =========================================== */
+/* The text so far (dark-green board strip), the model core (a board chip) and
+   the next-token probabilities (a light data panel). Namespaced cl-ag; reuses
+   the course palette only (green board, warm accents, amber for the chosen
+   token). Font sizes scale with --mv-fs so the S/M/L control works. */
+.cl-ag { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.cl-ag .cl-ag-cap {
+  display: block;
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 12px);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6f9a8f;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+.cl-ag .cl-ag-strip {
+  background: linear-gradient(160deg, #123f36, #0c2c27);
+  border: 1px solid #1c4d43;
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 22px rgba(8, 30, 26, 0.28);
+}
+.cl-ag .cl-ag-tokens { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.cl-ag .cl-ag-tok {
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 15px);
+  padding: 6px 11px;
+  border-radius: 8px;
+  background: #16232a;
+  border: 1px solid #2b4a44;
+  color: #cfe8df;
+}
+.cl-ag .cl-ag-tok.is-hot { box-shadow: 0 0 0 2px rgba(55, 211, 166, 0.55); }
+.cl-ag .cl-ag-tok.is-gen {
+  background: rgba(255, 212, 121, 0.16);
+  border-color: #ffd479;
+  color: #ffe6ab;
+  animation: cl-ag-pop 0.4s ease;
+}
+.cl-ag .cl-ag-tok.is-system { background: rgba(123, 170, 255, 0.16); border-color: #7baaff; color: #dbe7ff; }
+.cl-ag .cl-ag-tok.is-user { background: rgba(85, 214, 158, 0.18); border-color: #37d3a6; color: #d6ffec; }
+.cl-ag .cl-ag-tok.is-context { background: #10201b; border-color: #23443c; color: #8fb7ab; }
+.cl-ag .cl-ag-tok.is-dropped { background: transparent; border-style: dashed; border-color: #2b4a44; color: #5f7b74; opacity: 0.55; text-decoration: line-through; }
+.cl-ag .cl-ag-winmark { display: inline-flex; align-items: center; gap: 6px; align-self: stretch; margin: 0 4px; }
+.cl-ag .cl-ag-winmark-line { width: 2px; align-self: stretch; min-height: 26px; border-radius: 1px; background: repeating-linear-gradient(#37d3a6 0 4px, transparent 4px 8px); }
+.cl-ag .cl-ag-winmark-label { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 10px); letter-spacing: 0.06em; text-transform: uppercase; color: #6f9a8f; max-width: 78px; line-height: 1.2; }
+@keyframes cl-ag-pop {
+  0% { transform: scale(0.7); opacity: 0; }
+  60% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.cl-ag .cl-ag-caret {
+  width: 2px;
+  height: calc(var(--mv-fs, 1) * 22px);
+  background: #37d3a6;
+  border-radius: 1px;
+  animation: cl-ag-blink 1.05s step-end infinite;
+}
+@keyframes cl-ag-blink { 50% { opacity: 0; } }
+
+.cl-ag .cl-ag-core-row { display: flex; align-items: center; gap: 14px; }
+.cl-ag .cl-ag-wire { flex: 1; height: 2px; background: linear-gradient(90deg, transparent, #2b6a5b); border-radius: 2px; }
+.cl-ag .cl-ag-core {
+  min-width: 172px;
+  text-align: center;
+  background: linear-gradient(160deg, #16232a, #0f1c22);
+  border: 1px solid #2b4a44;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 22px rgba(8, 30, 26, 0.28);
+}
+.cl-ag .cl-ag-core.is-live { border-color: #37d3a6; box-shadow: 0 0 0 1px rgba(55, 211, 166, 0.4), 0 8px 22px rgba(8, 30, 26, 0.28); }
+.cl-ag .cl-ag-core-name { font-family: var(--cl-mono); font-weight: 700; letter-spacing: 0.08em; font-size: calc(var(--mv-fs, 1) * 20px); color: #cfe8df; }
+.cl-ag .cl-ag-core-sub { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 11.5px); color: #6f9a8f; margin-top: 3px; }
+.cl-ag .cl-ag-core-dots { display: flex; justify-content: center; gap: 5px; margin-top: 10px; }
+.cl-ag .cl-ag-core-dots span { width: 8px; height: 8px; border-radius: 2px; background: #113c35; border: 1px solid #1f6f5f; }
+.cl-ag .cl-ag-core.is-live .cl-ag-core-dots span { animation: cl-ag-scan 1.1s ease-in-out infinite; }
+.cl-ag .cl-ag-core.is-live .cl-ag-core-dots span:nth-child(2) { animation-delay: 0.14s; }
+.cl-ag .cl-ag-core.is-live .cl-ag-core-dots span:nth-child(3) { animation-delay: 0.28s; }
+.cl-ag .cl-ag-core.is-live .cl-ag-core-dots span:nth-child(4) { animation-delay: 0.42s; }
+.cl-ag .cl-ag-core.is-live .cl-ag-core-dots span:nth-child(5) { animation-delay: 0.56s; }
+@keyframes cl-ag-scan { 50% { background: #37d3a6; border-color: #37d3a6; } }
+.cl-ag .cl-ag-wire.is-hot { background: linear-gradient(90deg, #2b6a5b, #ffd479); box-shadow: 0 0 6px rgba(255, 212, 121, 0.5); }
+
+/* A tool the model can call: a card beside the core with the call it emits and
+   the result that comes back (which then lands in the strip as a context token). */
+.cl-ag .cl-ag-tool {
+  min-width: 176px;
+  background: linear-gradient(160deg, #16232a, #0f1c22);
+  border: 1px solid #2b4a44;
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 22px rgba(8, 30, 26, 0.28);
+}
+.cl-ag .cl-ag-tool.is-calling { border-color: #ffd479; box-shadow: 0 0 0 1px rgba(255, 212, 121, 0.35), 0 8px 22px rgba(8, 30, 26, 0.28); }
+.cl-ag .cl-ag-tool.is-returned { border-color: #37d3a6; box-shadow: 0 0 0 1px rgba(55, 211, 166, 0.35), 0 8px 22px rgba(8, 30, 26, 0.28); }
+.cl-ag .cl-ag-tool-name {
+  font-family: var(--cl-mono);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: calc(var(--mv-fs, 1) * 13px);
+  color: #cfe8df;
+}
+.cl-ag .cl-ag-tool-name::before { content: "\0192  "; color: #6f9a8f; }
+.cl-ag .cl-ag-tool-io { margin-top: 10px; }
+.cl-ag .cl-ag-tool-dir {
+  display: block;
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 10px);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6f9a8f;
+  margin-bottom: 4px;
+}
+.cl-ag .cl-ag-tool-chip {
+  display: inline-block;
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 13px);
+  padding: 5px 9px;
+  border-radius: 7px;
+}
+.cl-ag .cl-ag-tool-call .cl-ag-tool-chip { background: rgba(255, 212, 121, 0.16); border: 1px solid #ffd479; color: #ffe6ab; }
+.cl-ag .cl-ag-tool-result .cl-ag-tool-chip { background: rgba(85, 214, 158, 0.18); border: 1px solid #37d3a6; color: #d6ffec; animation: cl-ag-pop 0.4s ease; }
+
+.cl-ag .cl-ag-fan {
+  background: #f7f9fc;
+  border: 1px solid #d9e1ee;
+  border-radius: 12px;
+  padding: 14px 16px 16px;
+  min-height: 40px;
+}
+.cl-ag .cl-ag-fan.is-empty .cl-ag-cap { margin: 0; }
+.cl-ag .cl-ag-row {
+  display: grid;
+  grid-template-columns: minmax(56px, 78px) 1fr 42px;
+  gap: 10px;
+  align-items: center;
+  margin: 9px 0;
+  transition: opacity 0.25s;
+}
+.cl-ag .cl-ag-tok-name { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 14px); text-align: right; color: #334155; }
+.cl-ag .cl-ag-track { height: 13px; border-radius: 7px; background: rgba(31, 111, 95, 0.1); overflow: hidden; }
+.cl-ag .cl-ag-fill { display: block; height: 100%; border-radius: 7px; background: linear-gradient(90deg, #1f6f5f, #37d3a6); transition: width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.cl-ag .cl-ag-val { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 13px); color: #64748b; }
+.cl-ag .cl-ag-row.is-chosen .cl-ag-tok-name { color: #b45309; font-weight: 700; }
+.cl-ag .cl-ag-row.is-chosen .cl-ag-fill { background: linear-gradient(90deg, #d99a2b, #ffd479); }
+.cl-ag .cl-ag-row.is-chosen .cl-ag-val { color: #b45309; font-weight: 700; }
+.cl-ag .cl-ag-row.is-dim { opacity: 0.45; }
+
+/* ===== AI-track "agent loop" scene ===================================== */
+/* The capstone diagram: the environment, the agent's context, the model, its
+   tools and its memory, wired in a perceive-reason-act-observe loop. An SVG
+   scene; per step it lights nodes (amber), a loop stage, a memory row (blue) and
+   tool chips. Reuses the course palette only. */
+.cl-al { min-width: 0; }
+.cl-al .cl-al-svg { display: block; width: 100%; height: auto; border-radius: 12px; }
+.cl-al text { font-family: var(--cl-mono); }
+.cl-al .silk { fill: #cfe8df; }
+.cl-al .silk-dim { fill: #6f9a8f; }
+.cl-al .arrow { fill: #6f9a8f; }
+.cl-al .node-body { fill: #123f36; stroke: #1c4d43; stroke-width: 1.5; transition: all 0.25s; }
+.cl-al .node.hl .node-body { stroke: #ffd479; stroke-width: 2.5; filter: url(#cl-al-glow); }
+.cl-al .node.dim { opacity: 0.4; transition: opacity 0.25s; }
+.cl-al .agent-shell { fill: rgba(18, 63, 54, 0.35); stroke: #2f6a5c; stroke-width: 1.5; stroke-dasharray: 5 4; }
+.cl-al .llm .node-body { fill: #15514a; }
+.cl-al .think { fill: #ffd479; }
+.cl-al .goal { fill: #3a2f10; stroke: #ffd479; stroke-width: 1.4; }
+.cl-al .goal-t { fill: #ffd479; }
+.cl-al .chip { fill: #0f3b33; stroke: #22574c; stroke-width: 1; transition: all 0.2s; }
+.cl-al .chip.on { fill: #1c6153; stroke: #ffd479; }
+.cl-al .chip-t { fill: #9fc7bb; }
+.cl-al .trace { fill: none; stroke: #2f6a5c; stroke-width: 1.6; opacity: 0.55; transition: all 0.2s; }
+.cl-al .trace.hot { stroke: #ffd479; opacity: 1; }
+.cl-al .stage { transition: all 0.25s; }
+.cl-al .stage rect { fill: #0f3b33; stroke: #2f6a5c; stroke-width: 1.2; }
+.cl-al .stage.on rect { fill: #1c6153; stroke: #ffd479; stroke-width: 2; filter: url(#cl-al-glow); }
+.cl-al .stage text { fill: #9fc7bb; }
+.cl-al .stage.on text { fill: #fff; }
+.cl-al .memrow { transition: all 0.2s; }
+.cl-al .memrow rect { fill: #0f3b33; stroke: #22574c; }
+.cl-al .memrow.on rect { fill: #14384e; stroke: #7baaff; }
+.cl-al .mem-t { fill: #9fc7bb; }
+.cl-al .mem-s { fill: #6f9a8f; }
+.cl-al .ctxchip { fill: #0f3b33; stroke: #37d3a6; }
+.cl-al .ctxchip-t { fill: #cfe8df; font-size: 11px; }
+.cl-al .cl-al-packet { fill: #ffd479; filter: url(#cl-al-glow); }
+
 /* ===== Quiz component (self-contained checkpoint assessment) ============ */
 .cl-quiz { --clq-accent: #4457e6; --clq-good: #1f9d6b; --clq-bad: #d5463b; --clq-line: #d9e1ee;
   display: block; border: 1px solid var(--clq-line); border-radius: 16px; padding: 20px 22px;

@@ -8,17 +8,23 @@
 import type {
   MemoryVizConfig,
   PanelSpec,
+  PanelType,
   RegionName,
   VizAction,
+  LegendItem,
 } from "../core/memory-model.js";
 import { ALL_REGIONS } from "../core/memory-model.js";
 import { VizPlayer } from "../core/viz-player.js";
 import type { PlayerState } from "../core/viz-player.js";
+import { ProgressStore } from "../core/progress-store.js";
+import { Autoplay } from "../core/autoplay.js";
 import type { Panel, SyncCtx } from "./panel.js";
 import { BoardView } from "./board-view.js";
 import { MemoryDieView } from "./memory-die-view.js";
 import { CodePanel } from "./code-panel.js";
 import { NarrationView } from "./narration-view.js";
+import { AgentView } from "./agent-view.js";
+import { AgentLoopView } from "./agent-loop-view.js";
 import { VizControls } from "./viz-controls.js";
 import type { VizControlsHandlers } from "./viz-controls.js";
 
@@ -31,6 +37,7 @@ interface PanelBuildCtx {
   actions: VizAction[];
   handlers: VizControlsHandlers;
   regionTags: Partial<Record<RegionName, string>>;
+  legend?: LegendItem[];
   nextHref?: string;
 }
 
@@ -45,14 +52,22 @@ export class MemoryViz {
   private readonly actions: VizAction[];
   private controls: VizControls | null = null;
 
-  private timer: ReturnType<typeof setTimeout> | null = null;
-  private playing = false;
   private scale = 1;
   private readonly nextHref?: string;
-  private readonly awardedKey?: string;
-  private readonly xpKey: string;
-  private readonly awardAmount: number;
-  private awarded = false;
+  private readonly progress: ProgressStore;
+  private autoplay!: Autoplay;
+
+  private readonly panelFactories: Record<PanelType, (spec: PanelSpec, ctx: PanelBuildCtx) => Panel> = {
+    board: (_spec, ctx) => new BoardView(ctx.uid),
+    die: (spec, ctx) =>
+      new MemoryDieView(ctx.uid, ctx.code, ctx.labels, spec.regions ?? ctx.regions, ctx.zoomTab, ctx.regionTags),
+    code: (_spec, ctx) => new CodePanel(ctx.code),
+    narration: () => new NarrationView(),
+    agent: (spec) => new AgentView(spec.fan),
+    agentloop: () => new AgentLoopView(),
+    controls: (_spec, ctx) =>
+      (this.controls = new VizControls(ctx.actions, ctx.handlers, ctx.nextHref, ctx.legend)),
+  };
 
   private constructor(host: HTMLElement, config: MemoryVizConfig) {
     const uid = instanceSeq++;
@@ -63,12 +78,20 @@ export class MemoryViz {
 
     this.actions = config.actions ?? [];
     this.nextHref = config.nextHref;
-    this.awardedKey = config.awardedKey;
-    this.xpKey = config.xpKey ?? "course_global_xp";
-    this.awardAmount = typeof config.awardAmount === "number" ? config.awardAmount : 20;
+    this.progress = new ProgressStore(
+      config.xpKey ?? "course_global_xp",
+      config.awardedKey,
+      typeof config.awardAmount === "number" ? config.awardAmount : 20,
+    );
     this.player = new VizPlayer(config.steps ?? [], {
       deriveRefs: config.deriveRefs !== false,
       autoDim: config.autoDim !== false,
+    });
+    this.autoplay = new Autoplay({
+      stepMs: () => this.stepDurationMs(),
+      atEnd: () => this.player.state.atEnd,
+      advance: () => this.step(this.player.next()),
+      onStop: () => this.controls?.setPlaying(false),
     });
     this.scale = config.fontScale ?? 1;
 
@@ -82,7 +105,7 @@ export class MemoryViz {
         this.step(this.player.next());
       },
       onReset: () => { this.stop(); this.step(this.player.reset(), false); },
-      onPlay: () => (this.timer ? this.stop() : this.play()),
+      onPlay: () => (this.autoplay.isPlaying ? this.stop() : this.play()),
       onAction: (i) => this.runAction(i),
       onFontSize: (s) => this.setFont(s),
       onSeek: (i) => { this.stop(); this.step(this.player.goTo(i), false); },
@@ -100,6 +123,7 @@ export class MemoryViz {
       actions: this.actions,
       handlers,
       regionTags: config.regionTags ?? {},
+      legend: config.legend,
       nextHref: this.nextHref,
     };
 
@@ -155,22 +179,9 @@ export class MemoryViz {
 
   // ---- composition ------------------------------------------------------
   private makePanel(spec: PanelSpec, ctx: PanelBuildCtx): Panel {
-    switch (spec.type) {
-      case "board":
-        return new BoardView(ctx.uid);
-      case "die":
-        return new MemoryDieView(ctx.uid, ctx.code, ctx.labels, spec.regions ?? ctx.regions, ctx.zoomTab, ctx.regionTags);
-      case "code":
-        return new CodePanel(ctx.code);
-      case "narration":
-        return new NarrationView();
-      case "controls": {
-        this.controls = new VizControls(ctx.actions, ctx.handlers, ctx.nextHref);
-        return this.controls;
-      }
-      default:
-        throw new Error("MemoryViz: unknown panel type " + String(spec.type));
-    }
+    const build = this.panelFactories[spec.type];
+    if (!build) throw new Error("MemoryViz: unknown panel type " + String(spec.type));
+    return build(spec, ctx);
   }
 
   // ---- orchestration ----------------------------------------------------
@@ -187,27 +198,13 @@ export class MemoryViz {
   /** Refresh the course XP label in the hero, if the page has one. */
   private refreshXp(): void {
     const label = document.getElementById("courseXpLabel");
-    if (label) label.textContent = `Course XP: ${this.storedXp()}`;
-  }
-
-  private storedXp(): number {
-    return parseInt(localStorage.getItem(this.xpKey) || "0", 10);
+    if (label) label.textContent = `Course XP: ${this.progress.xp()}`;
   }
 
   /** Mark the lesson complete and grant XP once, when the last step is reached. */
   private markComplete(): void {
-    if (this.awarded || !this.awardedKey) return;
-    this.awarded = true;
-    try {
-      const done = JSON.parse(localStorage.getItem(this.awardedKey) || "{}");
-      if (!done.done) {
-        localStorage.setItem(this.awardedKey, JSON.stringify({ done: true }));
-        localStorage.setItem(this.xpKey, String(this.storedXp() + this.awardAmount));
-      }
-      this.refreshXp();
-    } catch {
-      /* storage unavailable - progress simply is not saved */
-    }
+    this.progress.awardOnce();
+    this.refreshXp();
   }
 
   private runAction(index: number): void {
@@ -236,23 +233,12 @@ export class MemoryViz {
 
   private play(): void {
     if (!this.controls) return;
-    this.playing = true;
-    this.controls.setPlaying(true);
     if (this.player.state.atEnd) this.step(this.player.reset(), false);
-    this.scheduleAdvance();
+    this.controls.setPlaying(true);
+    this.autoplay.start();
   }
 
   /** Hold each step long enough to read its narration at ~300 words/minute. */
-  private scheduleAdvance(): void {
-    this.timer = setTimeout(() => {
-      if (!this.playing) return;
-      if (this.player.state.atEnd) return this.stop();
-      this.step(this.player.next());
-      if (this.player.state.atEnd) this.stop();
-      else this.scheduleAdvance();
-    }, this.stepDurationMs());
-  }
-
   private stepDurationMs(): number {
     const words = (this.player.state.model.narr ?? "").trim().split(/\s+/).filter(Boolean).length;
     const readMs = (words / WORDS_PER_MINUTE) * 60000;
@@ -260,10 +246,7 @@ export class MemoryViz {
   }
 
   private stop(): void {
-    this.playing = false;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
-    if (this.controls) this.controls.setPlaying(false);
+    this.autoplay.stop();
   }
 
   private setFont(scale: number): void {

@@ -3,6 +3,7 @@
 // emits intent through handlers and renders the state it is given.
 
 import type { Panel, SyncCtx } from "./panel.js";
+import type { LegendItem } from "../core/memory-model.js";
 
 export interface VizControlsHandlers {
   onPrev(): void;
@@ -21,10 +22,32 @@ export interface TransportState {
   atEnd: boolean;
 }
 
+const DEFAULT_LEGEND: LegendItem[] = [
+  { sw: "#37d3a6", label: "data in RAM" },
+  { sw: "#2b6a5b", label: "active CPU core" },
+  { sw: "#ffd479", label: "signal on the bus", round: true },
+  { sw: "#2563eb", label: "stack frame (a call)" },
+  { sw: "#1f6f5f", label: "reference to an object", round: true },
+];
+
+function legendHtml(items: LegendItem[]): string {
+  return items
+    .map((i) => {
+      const round = i.round ? ";border-radius:50%" : "";
+      return `<span><i class="cl-mv-sw" style="background:${i.sw}${round}"></i>${i.label}</span>`;
+    })
+    .join("");
+}
+
 export class VizControls implements Panel {
   readonly el: HTMLElement;
 
-  constructor(actions: Array<{ label: string }>, handlers: VizControlsHandlers, private readonly nextHref?: string) {
+  constructor(
+    actions: Array<{ label: string }>,
+    handlers: VizControlsHandlers,
+    private readonly nextHref?: string,
+    legend?: LegendItem[],
+  ) {
     this.el = document.createElement("div");
     this.el.innerHTML = `
       <div class="cl-mv-controls">
@@ -41,13 +64,7 @@ export class VizControls implements Panel {
         </div>
       </div>
       <input type="range" class="cl-mv-scrub" data-scrub min="0" value="0" step="1" aria-label="Step" />
-      <div class="cl-mv-legend">
-        <span><i class="cl-mv-sw" style="background:#37d3a6"></i>data in RAM</span>
-        <span><i class="cl-mv-sw" style="background:#2b6a5b"></i>active CPU core</span>
-        <span><i class="cl-mv-sw" style="background:#ffd479;border-radius:50%"></i>signal on the bus</span>
-        <span><i class="cl-mv-sw" style="background:#2563eb"></i>stack frame (a call)</span>
-        <span><i class="cl-mv-sw" style="background:#1f6f5f;border-radius:50%"></i>reference to an object</span>
-      </div>`;
+      <div class="cl-mv-legend">${legendHtml(legend && legend.length ? legend : DEFAULT_LEGEND)}</div>`;
 
     const controls = this.el.querySelector(".cl-mv-controls") as HTMLElement;
     actions.forEach((a, i) => {

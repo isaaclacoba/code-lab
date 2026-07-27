@@ -20,6 +20,7 @@ export type {
   PanelType,
   PanelSpec,
   VizLayout,
+  LegendItem,
   Step as MemoryVizStep,
   VizAction as MemoryVizAction,
   Frame as MemoryVizFrame,
@@ -37,6 +38,34 @@ export {
   referencedIds,
   resolveModel,
 } from "./core/memory-model.js";
+
+export type {
+  AgentScene,
+  AgentToken,
+  AgentTokenKind,
+  AgentCandidate,
+  AgentFan,
+  AgentCore,
+  AgentTool,
+  FanRow,
+} from "./core/agent-model.js";
+export { agentFanRows } from "./core/agent-model.js";
+
+export type {
+  AgentLoopScene,
+  AgentLoopNodeId,
+  AgentLoopPacket,
+  LoopStage,
+  AgentLoopToolId,
+  AgentLoopMemoryId,
+  AgentLoopTool,
+  AgentLoopMemoryRow,
+} from "./core/agent-loop-model.js";
+export {
+  agentLoopActiveSet,
+  DEFAULT_LOOP_TOOLS,
+  DEFAULT_LOOP_MEMORIES,
+} from "./core/agent-loop-model.js";
 export type { CodeMark } from "./core/code-marks.js";
 export {
   resolveMarks,
