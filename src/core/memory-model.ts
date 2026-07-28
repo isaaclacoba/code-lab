@@ -12,6 +12,12 @@ import type { AgentScene } from "./agent-model.js";
 export type { AgentScene } from "./agent-model.js";
 import type { AgentLoopScene } from "./agent-loop-model.js";
 export type { AgentLoopScene } from "./agent-loop-model.js";
+import type { MemoryShelfScene } from "./memory-shelf-model.js";
+export type { MemoryShelfScene } from "./memory-shelf-model.js";
+import type { ToolRackScene } from "./tool-rack-model.js";
+export type { ToolRackScene } from "./tool-rack-model.js";
+import type { TranscriptScene } from "./transcript-model.js";
+export type { TranscriptScene } from "./transcript-model.js";
 
 export interface Slot {
   id: string;
@@ -118,6 +124,15 @@ export interface Step {
   /** AI-track "agent loop" scene for this step (the assembled agent: model,
    *  context, memory, tools, and the loop). Rendered by an `agentloop` panel. */
   agentLoop?: AgentLoopScene;
+  /** AI-track "memory shelf" scene: working memory over the episodic/semantic/
+   *  procedural stores. Rendered by a `memoryshelf` panel. */
+  memoryShelf?: MemoryShelfScene;
+  /** AI-track "tool rack" scene: several tools with schemas, a call, and a
+   *  result or an error. Rendered by a `toolrack` panel. */
+  toolRack?: ToolRackScene;
+  /** AI-track "transcript" scene: the growing list of role-tagged messages the
+   *  model re-reads on every call. Rendered by a `transcript` panel. */
+  transcript?: TranscriptScene;
 }
 
 /** An interactive verb: transforms the live model and returns the next one. */
@@ -162,7 +177,7 @@ export const FULL_REGIONS: RegionName[] = ["code", "rodata", "data", "bss", "hea
 /** A composable panel a lesson can place in the layout. New panel types (bits,
  *  pipeline, network, a code editor merged from CodeLab, ...) extend this union
  *  and get a factory in the facade; existing panels are untouched (open/closed). */
-export type PanelType = "board" | "die" | "code" | "narration" | "controls" | "agent" | "agentloop";
+export type PanelType = "board" | "die" | "code" | "narration" | "controls" | "agent" | "agentloop" | "memoryshelf" | "toolrack" | "transcript";
 
 export interface PanelSpec {
   type: PanelType;

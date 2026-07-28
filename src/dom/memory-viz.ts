@@ -25,6 +25,9 @@ import { CodePanel } from "./code-panel.js";
 import { NarrationView } from "./narration-view.js";
 import { AgentView } from "./agent-view.js";
 import { AgentLoopView } from "./agent-loop-view.js";
+import { MemoryShelfView } from "./memory-shelf-view.js";
+import { ToolRackView } from "./tool-rack-view.js";
+import { TranscriptView } from "./transcript-view.js";
 import { VizControls } from "./viz-controls.js";
 import type { VizControlsHandlers } from "./viz-controls.js";
 
@@ -65,6 +68,9 @@ export class MemoryViz {
     narration: () => new NarrationView(),
     agent: (spec) => new AgentView(spec.fan),
     agentloop: () => new AgentLoopView(),
+    memoryshelf: () => new MemoryShelfView(),
+    toolrack: () => new ToolRackView(),
+    transcript: () => new TranscriptView(),
     controls: (_spec, ctx) =>
       (this.controls = new VizControls(ctx.actions, ctx.handlers, ctx.nextHref, ctx.legend)),
   };

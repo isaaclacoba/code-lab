@@ -555,7 +555,18 @@
    the course palette only (green board, warm accents, amber for the chosen
    token). Font sizes scale with --mv-fs so the S/M/L control works. */
 .cl-ag { display: grid; gap: 14px; align-content: start; min-width: 0; }
-.cl-ag .cl-ag-cap {
+/* The course page styles inline <code> as a light pill (see styles.css
+   :not(pre) > code). Inside a dark scene that would be light text on a light
+   chip, so neutralise it in the visual column; each scene's own chip rules add
+   colour back with higher specificity. Scoped to the visual column so the
+   narration keeps its pill, and like the course rule so <pre> listings are
+   untouched. */
+.cl-mv-visual :not(pre) > code { background: none; border: 0; border-radius: 0; padding: 0; }
+
+.cl-ag .cl-ag-cap,
+.cl-ms .cl-ms-cap,
+.cl-tr .cl-tr-cap,
+.cl-tx .cl-tx-cap {
   display: block;
   font-family: var(--cl-mono);
   font-size: calc(var(--mv-fs, 1) * 12px);
@@ -565,6 +576,9 @@
   margin-bottom: 8px;
   font-weight: 500;
 }
+/* The working-memory caption sits on the dark-green strip, so it needs a
+   lighter tone than the captions that sit on the pale stage. */
+.cl-ms .cl-ms-cap { color: #9fc8bd; }
 .cl-ag .cl-ag-strip {
   background: linear-gradient(160deg, #123f36, #0c2c27);
   border: 1px solid #1c4d43;
@@ -736,6 +750,140 @@
 .cl-al .ctxchip { fill: #0f3b33; stroke: #37d3a6; }
 .cl-al .ctxchip-t { fill: #cfe8df; font-size: 11px; }
 .cl-al .cl-al-packet { fill: #ffd479; filter: url(#cl-al-glow); }
+
+/* ===== AI-track "memory shelf" scene ================================== */
+/* Memory split into kinds: a working-memory strip (the context read now) over
+   three long-term stores - episodic, semantic, procedural. Per step a store or
+   the strip is spotlit (amber), and an item just saved or recalled glows (teal).
+   Reuses the agent-scene palette. */
+.cl-ms { display: grid; gap: 0; align-content: start; min-width: 0; }
+.cl-ms .cl-ms-working {
+  background: linear-gradient(160deg, #123f36, #0c2c27);
+  border: 1px solid #1c4d43;
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 22px rgba(8, 30, 26, 0.28);
+  transition: box-shadow 0.25s, border-color 0.25s;
+}
+.cl-ms .cl-ms-working.is-active { border-color: #ffd479; box-shadow: 0 0 0 1px rgba(255, 212, 121, 0.4), 0 8px 22px rgba(8, 30, 26, 0.28); }
+.cl-ms .cl-ms-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; min-height: 30px; }
+.cl-ms .cl-ms-item {
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 14px);
+  padding: 6px 11px;
+  border-radius: 8px;
+  background: #16232a;
+  border: 1px solid #2b4a44;
+  color: #cfe8df;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+.cl-ms .cl-ms-item.is-hot { border-color: #37d3a6; box-shadow: 0 0 0 2px rgba(55, 211, 166, 0.5); animation: cl-ag-pop 0.4s ease; }
+.cl-ms .cl-ms-empty { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 12px); color: #5f7b74; font-style: italic; }
+.cl-ms .cl-ms-wire { justify-self: center; width: 2px; height: 22px; background: repeating-linear-gradient(#2b6a5b 0 4px, transparent 4px 8px); }
+.cl-ms .cl-ms-stores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.cl-ms .cl-ms-store {
+  background: linear-gradient(160deg, #16232a, #0f1c22);
+  border: 1px solid #2b4a44;
+  border-radius: 14px;
+  padding: 13px 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 22px rgba(8, 30, 26, 0.28);
+  transition: box-shadow 0.25s, border-color 0.25s;
+}
+.cl-ms .cl-ms-store.is-active { border-color: #ffd479; box-shadow: 0 0 0 1px rgba(255, 212, 121, 0.4), 0 8px 22px rgba(8, 30, 26, 0.28); }
+.cl-ms .cl-ms-store-head { border-bottom: 1px solid #23443c; padding-bottom: 8px; margin-bottom: 10px; }
+.cl-ms .cl-ms-store-name { display: block; font-family: var(--cl-mono); font-weight: 700; letter-spacing: 0.06em; font-size: calc(var(--mv-fs, 1) * 13px); color: #cfe8df; }
+.cl-ms .cl-ms-store-blurb { display: block; font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 11px); color: #6f9a8f; margin-top: 3px; }
+.cl-ms .cl-ms-store-items { display: flex; flex-wrap: wrap; gap: 6px; min-height: 26px; }
+.cl-ms .cl-ms-store-items .cl-ms-item { font-size: calc(var(--mv-fs, 1) * 12.5px); padding: 5px 9px; }
+
+/* ===== AI-track "tool rack" scene ===================================== */
+/* Several tools, each a card showing its schema (name + typed params) and a
+   state colour - chosen (amber), calling (amber pulse), returned (teal), error
+   (rose). Below, the call the model emits and the result, or the error it must
+   recover from. Reuses the agent-scene palette + one rose accent for errors. */
+.cl-tr { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.cl-tr .cl-tr-rack { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.cl-tr .cl-tr-tool {
+  background: linear-gradient(160deg, #16232a, #0f1c22);
+  border: 1px solid #2b4a44;
+  border-radius: 12px;
+  padding: 12px 13px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 22px rgba(8, 30, 26, 0.28);
+  transition: box-shadow 0.25s, border-color 0.25s, opacity 0.25s;
+}
+.cl-tr .cl-tr-tool.is-idle { opacity: 0.82; }
+.cl-tr .cl-tr-tool.is-chosen { border-color: #ffd479; box-shadow: 0 0 0 1px rgba(255, 212, 121, 0.4), 0 8px 22px rgba(8, 30, 26, 0.28); }
+.cl-tr .cl-tr-tool.is-calling { border-color: #ffd479; box-shadow: 0 0 0 1px rgba(255, 212, 121, 0.4), 0 8px 22px rgba(8, 30, 26, 0.28); animation: cl-ag-pop 0.4s ease; }
+.cl-tr .cl-tr-tool.is-returned { border-color: #37d3a6; box-shadow: 0 0 0 1px rgba(55, 211, 166, 0.4), 0 8px 22px rgba(8, 30, 26, 0.28); }
+.cl-tr .cl-tr-tool.is-error { border-color: #e0708a; box-shadow: 0 0 0 1px rgba(224, 112, 138, 0.4), 0 8px 22px rgba(8, 30, 26, 0.28); }
+.cl-tr .cl-tr-tool-sig { display: block; font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 12.5px); color: #cfe8df; word-break: break-word; }
+.cl-tr .cl-tr-tool-sig::before { content: "\0192  "; color: #6f9a8f; }
+.cl-tr .cl-tr-tool-desc { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 11px); color: #6f9a8f; margin-top: 6px; line-height: 1.35; }
+.cl-tr .cl-tr-io {
+  display: grid; gap: 10px;
+  background: linear-gradient(160deg, #123f36, #0c2c27);
+  border: 1px solid #1c4d43;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.cl-tr .cl-tr-dir { display: block; font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 10px); letter-spacing: 0.06em; text-transform: uppercase; color: #6f9a8f; margin-bottom: 5px; }
+.cl-tr .cl-tr-chip { display: inline-block; font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 13px); padding: 5px 9px; border-radius: 7px; }
+.cl-tr .cl-tr-call .cl-tr-chip { background: rgba(255, 212, 121, 0.16); border: 1px solid #ffd479; color: #ffe6ab; }
+.cl-tr .cl-tr-result .cl-tr-chip { background: rgba(85, 214, 158, 0.18); border: 1px solid #37d3a6; color: #d6ffec; animation: cl-ag-pop 0.4s ease; }
+.cl-tr .cl-tr-error .cl-tr-chip { background: rgba(224, 112, 138, 0.16); border: 1px solid #e0708a; color: #ffd6e0; animation: cl-ag-pop 0.4s ease; }
+
+/* ===== AI-track "transcript" scene ==================================== */
+/* The honest picture of an agent run: a growing list of role-tagged messages the
+   model re-reads on every call. Each message is a dark card whose left edge and
+   author tag are coloured by WHO wrote it - you (teal), your app (blue), the
+   model (amber), your code (rose) - so the crux "the model only writes assistant
+   text; a tool result is written by your code" is visible at a glance. An
+   optional banner + arrow marks an API round-trip. Course palette only. */
+.cl-tx { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.cl-tx .cl-tx-banner {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 12px);
+  color: #9fc8bd;
+  background: linear-gradient(160deg, #123f36, #0c2c27);
+  border: 1px solid #1c4d43;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.cl-tx .cl-tx-banner.is-send { border-color: #7baaff; color: #dbe7ff; }
+.cl-tx .cl-tx-banner.is-receive { border-color: #ffd479; color: #ffe6ab; }
+.cl-tx .cl-tx-arrow { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 15px); }
+.cl-tx .cl-tx-list { display: grid; gap: 10px; }
+.cl-tx .cl-tx-msg {
+  background: linear-gradient(160deg, #16232a, #0f1c22);
+  border: 1px solid #2b4a44;
+  border-left-width: 3px;
+  border-radius: 12px;
+  padding: 11px 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 22px rgba(8, 30, 26, 0.28);
+  transition: box-shadow 0.25s, border-color 0.25s;
+}
+.cl-tx .cl-tx-msg.by-you { border-left-color: #37d3a6; }
+.cl-tx .cl-tx-msg.by-app { border-left-color: #7baaff; }
+.cl-tx .cl-tx-msg.by-model { border-left-color: #ffd479; }
+.cl-tx .cl-tx-msg.by-code { border-left-color: #e0708a; }
+.cl-tx .cl-tx-msg.is-hot { box-shadow: 0 0 0 1px rgba(55, 211, 166, 0.45), 0 8px 22px rgba(8, 30, 26, 0.28); animation: cl-ag-pop 0.4s ease; }
+.cl-tx .cl-tx-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.cl-tx .cl-tx-role {
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 11px);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #cfe8df;
+  font-weight: 700;
+}
+.cl-tx .cl-tx-by { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 11px); font-style: italic; color: #6f9a8f; }
+.cl-tx .cl-tx-msg.by-you .cl-tx-by { color: #9fe8cf; }
+.cl-tx .cl-tx-msg.by-app .cl-tx-by { color: #b9cdff; }
+.cl-tx .cl-tx-msg.by-model .cl-tx-by { color: #ffe0a8; }
+.cl-tx .cl-tx-msg.by-code .cl-tx-by { color: #f0b6c4; }
+.cl-tx .cl-tx-text { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 13.5px); color: #cfe8df; line-height: 1.45; word-break: break-word; }
+.cl-tx .cl-tx-note { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 11px); color: #6f9a8f; margin-top: 7px; padding-top: 7px; border-top: 1px dashed #23443c; }
 
 /* ===== Quiz component (self-contained checkpoint assessment) ============ */
 .cl-quiz { --clq-accent: #4457e6; --clq-good: #1f9d6b; --clq-bad: #d5463b; --clq-line: #d9e1ee;

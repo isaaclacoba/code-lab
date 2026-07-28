@@ -66,6 +66,37 @@ export {
   DEFAULT_LOOP_TOOLS,
   DEFAULT_LOOP_MEMORIES,
 } from "./core/agent-loop-model.js";
+
+export type {
+  MemoryShelfScene,
+  MemoryKind,
+  ShelfItem,
+  MemoryStoreMeta,
+  ResolvedStore,
+} from "./core/memory-shelf-model.js";
+export { DEFAULT_MEMORY_STORES, shelfStores, activeStores } from "./core/memory-shelf-model.js";
+
+export type {
+  ToolRackScene,
+  ToolState,
+  ToolParam,
+  RackTool,
+  ResolvedRackTool,
+  ToolIoKind,
+  ToolIoRow,
+} from "./core/tool-rack-model.js";
+export { formatToolSignature, resolveRackTools, toolRackRows } from "./core/tool-rack-model.js";
+
+export type {
+  TranscriptScene,
+  TranscriptMessage,
+  ResolvedMessage,
+  MsgRole,
+  MsgAuthor,
+  TranscriptFlow,
+} from "./core/transcript-model.js";
+export { resolveTranscript, authorOf } from "./core/transcript-model.js";
+
 export type { CodeMark } from "./core/code-marks.js";
 export {
   resolveMarks,

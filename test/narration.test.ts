@@ -13,6 +13,24 @@ test("inline code and bold are formatted and html is escaped", () => {
   );
 });
 
+test("single asterisks become italic", () => {
+  assert.equal(renderNarration("it is *just* true"), "<p>it is <em>just</em> true</p>");
+});
+
+test("bold wins over italic when both are present on a line", () => {
+  assert.equal(
+    renderNarration("**memory** is one box, kept *where* it matters"),
+    "<p><strong>memory</strong> is one box, kept <em>where</em> it matters</p>",
+  );
+});
+
+test("several italic spans on one line each format independently", () => {
+  assert.equal(
+    renderNarration("*what happened*, *what stays true*, *how to act*"),
+    "<p><em>what happened</em>, <em>what stays true</em>, <em>how to act</em></p>",
+  );
+});
+
 test("blank lines split paragraphs", () => {
   assert.equal(renderNarration("One.\n\nTwo."), "<p>One.</p><p>Two.</p>");
 });
