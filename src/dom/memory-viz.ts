@@ -28,6 +28,8 @@ import { AgentLoopView } from "./agent-loop-view.js";
 import { MemoryShelfView } from "./memory-shelf-view.js";
 import { ToolRackView } from "./tool-rack-view.js";
 import { TranscriptView } from "./transcript-view.js";
+import { RetrievalView } from "./retrieval-view.js";
+import { PlanboardView } from "./planboard-view.js";
 import { VizControls } from "./viz-controls.js";
 import type { VizControlsHandlers } from "./viz-controls.js";
 
@@ -71,6 +73,8 @@ export class MemoryViz {
     memoryshelf: () => new MemoryShelfView(),
     toolrack: () => new ToolRackView(),
     transcript: () => new TranscriptView(),
+    retrieval: () => new RetrievalView(),
+    planboard: () => new PlanboardView(),
     controls: (_spec, ctx) =>
       (this.controls = new VizControls(ctx.actions, ctx.handlers, ctx.nextHref, ctx.legend)),
   };

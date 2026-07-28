@@ -97,6 +97,22 @@ export type {
 } from "./core/transcript-model.js";
 export { resolveTranscript, authorOf } from "./core/transcript-model.js";
 
+export type {
+  RetrievalScene,
+  RetrievalDoc,
+  ResolvedDoc,
+  DocState,
+} from "./core/retrieval-model.js";
+export { resolveRetrieval, retrievedDocs } from "./core/retrieval-model.js";
+
+export type {
+  PlanScene,
+  PlanStep,
+  ResolvedPlanStep,
+  PlanState,
+} from "./core/planboard-model.js";
+export { resolvePlan, planProgress } from "./core/planboard-model.js";
+
 export type { CodeMark } from "./core/code-marks.js";
 export {
   resolveMarks,

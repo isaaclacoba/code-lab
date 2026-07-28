@@ -18,6 +18,10 @@ import type { ToolRackScene } from "./tool-rack-model.js";
 export type { ToolRackScene } from "./tool-rack-model.js";
 import type { TranscriptScene } from "./transcript-model.js";
 export type { TranscriptScene } from "./transcript-model.js";
+import type { RetrievalScene } from "./retrieval-model.js";
+export type { RetrievalScene } from "./retrieval-model.js";
+import type { PlanScene } from "./planboard-model.js";
+export type { PlanScene } from "./planboard-model.js";
 
 export interface Slot {
   id: string;
@@ -133,6 +137,12 @@ export interface Step {
   /** AI-track "transcript" scene: the growing list of role-tagged messages the
    *  model re-reads on every call. Rendered by a `transcript` panel. */
   transcript?: TranscriptScene;
+  /** AI-track "retrieval" scene: a query, a store of document chunks with
+   *  similarity scores, and the grounded answer. Rendered by a `retrieval` panel. */
+  retrieval?: RetrievalScene;
+  /** AI-track "planboard" scene: a goal decomposed into ordered, stateful steps.
+   *  Rendered by a `planboard` panel. */
+  plan?: PlanScene;
 }
 
 /** An interactive verb: transforms the live model and returns the next one. */
@@ -177,7 +187,7 @@ export const FULL_REGIONS: RegionName[] = ["code", "rodata", "data", "bss", "hea
 /** A composable panel a lesson can place in the layout. New panel types (bits,
  *  pipeline, network, a code editor merged from CodeLab, ...) extend this union
  *  and get a factory in the facade; existing panels are untouched (open/closed). */
-export type PanelType = "board" | "die" | "code" | "narration" | "controls" | "agent" | "agentloop" | "memoryshelf" | "toolrack" | "transcript";
+export type PanelType = "board" | "die" | "code" | "narration" | "controls" | "agent" | "agentloop" | "memoryshelf" | "toolrack" | "transcript" | "retrieval" | "planboard";
 
 export interface PanelSpec {
   type: PanelType;

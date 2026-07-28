@@ -566,7 +566,9 @@
 .cl-ag .cl-ag-cap,
 .cl-ms .cl-ms-cap,
 .cl-tr .cl-tr-cap,
-.cl-tx .cl-tx-cap {
+.cl-tx .cl-tx-cap,
+.cl-rg .cl-rg-cap,
+.cl-pb .cl-pb-cap {
   display: block;
   font-family: var(--cl-mono);
   font-size: calc(var(--mv-fs, 1) * 12px);
@@ -884,6 +886,72 @@
 .cl-tx .cl-tx-msg.by-code .cl-tx-by { color: #f0b6c4; }
 .cl-tx .cl-tx-text { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 13.5px); color: #cfe8df; line-height: 1.45; word-break: break-word; }
 .cl-tx .cl-tx-note { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 11px); color: #6f9a8f; margin-top: 7px; padding-top: 7px; border-top: 1px dashed #23443c; }
+
+/* ===== AI-track "retrieval" scene (RAG) =============================== */
+/* A query chip over a store of document chunks; once embedded, each chunk shows
+   a similarity bar and the closest ones light amber as retrieved, then a grounded
+   answer box appears. Course palette only. */
+.cl-rg { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.cl-rg .cl-rg-query, .cl-rg .cl-rg-answer {
+  background: linear-gradient(160deg, #16232a, #0f1c22);
+  border: 1px solid #2b4a44; border-radius: 12px; padding: 12px 14px;
+}
+.cl-rg .cl-rg-query { border-color: #3a5578; }
+.cl-rg .cl-rg-answer { border-color: #37d3a6; }
+.cl-rg .cl-rg-tag {
+  display: block; font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 10px);
+  letter-spacing: 0.06em; text-transform: uppercase; color: #6f9a8f; margin-bottom: 6px;
+}
+.cl-rg .cl-rg-qtext { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 14px); color: #dbe7ff; }
+.cl-rg .cl-rg-atext { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 14px); color: #d6ffec; line-height: 1.5; }
+.cl-rg .cl-rg-docs { display: grid; gap: 8px; }
+.cl-rg .cl-rg-doc {
+  display: grid; grid-template-columns: 1fr minmax(120px, 190px); gap: 12px; align-items: center;
+  background: #10201b; border: 1px solid #23443c; border-radius: 10px; padding: 10px 12px; transition: all 0.25s;
+}
+.cl-rg .cl-rg-doc-text { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 13px); color: #8fb7ab; }
+.cl-rg .cl-rg-doc-meter { display: flex; align-items: center; gap: 8px; }
+.cl-rg .cl-rg-bar { flex: 1; height: 10px; border-radius: 6px; background: rgba(31, 111, 95, 0.14); overflow: hidden; }
+.cl-rg .cl-rg-fill { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, #1f6f5f, #37d3a6); transition: width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.cl-rg .cl-rg-score { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 12px); color: #6f9a8f; min-width: 34px; text-align: right; }
+.cl-rg .cl-rg-doc.is-match { border-color: #ffd479; background: #1b2a1e; box-shadow: 0 0 0 1px rgba(255, 212, 121, 0.3); }
+.cl-rg .cl-rg-doc.is-match .cl-rg-doc-text { color: #ffe6ab; }
+.cl-rg .cl-rg-doc.is-match .cl-rg-fill { background: linear-gradient(90deg, #d99a2b, #ffd479); }
+.cl-rg .cl-rg-doc.is-match .cl-rg-score { color: #ffe6ab; font-weight: 700; }
+.cl-rg .cl-rg-doc.is-dim { opacity: 0.5; }
+
+/* ===== AI-track "planboard" scene ==================================== */
+/* A goal, then the ordered steps the agent decomposes it into, each carrying a
+   state: pending (dim), active (amber), done (teal check), blocked (rose). A
+   small progress line reads done / total. Course palette only. */
+.cl-pb { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.cl-pb .cl-pb-goal { background: #3a2f10; border: 1px solid #ffd479; border-radius: 12px; padding: 10px 14px; }
+.cl-pb .cl-pb-tag {
+  font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 10px);
+  letter-spacing: 0.06em; text-transform: uppercase; color: #c69a3a; margin-right: 8px;
+}
+.cl-pb .cl-pb-goal-t { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 14px); color: #ffe6ab; font-weight: 700; }
+.cl-pb .cl-pb-steps { display: grid; gap: 8px; }
+.cl-pb .cl-pb-step {
+  display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start;
+  background: linear-gradient(160deg, #16232a, #0f1c22); border: 1px solid #2b4a44;
+  border-radius: 10px; padding: 11px 13px; transition: all 0.25s;
+}
+.cl-pb .cl-pb-num {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+  border-radius: 8px; font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 13px);
+  font-weight: 700; background: #10201b; border: 1px solid #2b4a44; color: #8fb7ab;
+}
+.cl-pb .cl-pb-text { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 14px); color: #cfe8df; line-height: 1.45; }
+.cl-pb .cl-pb-note { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 11px); color: #6f9a8f; margin-top: 6px; padding-top: 6px; border-top: 1px dashed #23443c; }
+.cl-pb .cl-pb-step.is-pending { opacity: 0.62; }
+.cl-pb .cl-pb-step.is-active { border-color: #ffd479; box-shadow: 0 0 0 1px rgba(255, 212, 121, 0.35); }
+.cl-pb .cl-pb-step.is-active .cl-pb-num { background: #3a2f10; border-color: #ffd479; color: #ffe6ab; }
+.cl-pb .cl-pb-step.is-done .cl-pb-num { background: #14382b; border-color: #37d3a6; color: #37d3a6; }
+.cl-pb .cl-pb-step.is-done .cl-pb-text { color: #9fb4ab; }
+.cl-pb .cl-pb-step.is-blocked { border-color: #e0708a; }
+.cl-pb .cl-pb-step.is-blocked .cl-pb-num { background: #3a1620; border-color: #e0708a; color: #f0b6c4; }
+.cl-pb .cl-pb-prog { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 11px); letter-spacing: 0.05em; text-transform: uppercase; color: #6f9a8f; text-align: right; }
 
 /* ===== Quiz component (self-contained checkpoint assessment) ============ */
 .cl-quiz { --clq-accent: #4457e6; --clq-good: #1f9d6b; --clq-bad: #d5463b; --clq-line: #d9e1ee;
