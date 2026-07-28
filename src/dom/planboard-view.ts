@@ -5,7 +5,7 @@
 // reads "done / total". It renders the `plan` field of the current step and knows
 // nothing about the model, the other panels, or the controls.
 
-import type { PlanState } from "../core/planboard-model.js";
+import type { PlanScene, PlanState } from "../core/planboard-model.js";
 import { resolvePlan, planProgress } from "../core/planboard-model.js";
 import { escapeHtml } from "../core/narration.js";
 import type { Panel, SyncCtx } from "./panel.js";
@@ -52,7 +52,7 @@ export class PlanboardView implements Panel {
       `<span class="cl-pb-tag">goal</span><span class="cl-pb-goal-t">${escapeHtml(goal)}</span>`;
   }
 
-  private renderSteps(scene: Parameters<typeof resolvePlan>[0]): void {
+  private renderSteps(scene: PlanScene): void {
     const host = this.el.querySelector("[data-steps]") as HTMLElement;
     host.innerHTML = resolvePlan(scene)
       .map((step) => {
@@ -72,7 +72,7 @@ export class PlanboardView implements Panel {
       .join("");
   }
 
-  private renderProgress(scene: Parameters<typeof planProgress>[0]): void {
+  private renderProgress(scene: PlanScene): void {
     const host = this.el.querySelector("[data-prog]") as HTMLElement;
     const { done, total } = planProgress(scene);
     if (total === 0) {

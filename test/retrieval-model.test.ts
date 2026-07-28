@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveRetrieval, retrievedDocs } from "../src/core/retrieval-model.ts";
+import { resolveRetrieval } from "../src/core/retrieval-model.ts";
 
 test("no scene yields an empty list", () => {
   assert.deepEqual(resolveRetrieval(null), []);
@@ -34,15 +34,4 @@ test("out-of-range scores clamp to 0..1", () => {
     ],
   });
   assert.deepEqual(rows.map((d) => d.scorePct), [100, 0]);
-});
-
-test("retrievedDocs returns only the matched chunks in order", () => {
-  const scene = {
-    docs: [
-      { text: "one", state: "match" as const, score: 0.9 },
-      { text: "two", state: "dim" as const, score: 0.2 },
-      { text: "three", state: "match" as const, score: 0.8 },
-    ],
-  };
-  assert.deepEqual(retrievedDocs(scene).map((d) => d.text), ["one", "three"]);
 });

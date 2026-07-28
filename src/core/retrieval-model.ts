@@ -69,10 +69,3 @@ export function resolveRetrieval(scene: RetrievalScene | null | undefined): Reso
     };
   });
 }
-
-/** The chunks retrieved this step (state "match"), in display order. Exposed so a
- *  lesson (or a test) can ask "what got pulled into the context?" without walking
- *  the whole list. Pure. */
-export function retrievedDocs(scene: RetrievalScene | null | undefined): ResolvedDoc[] {
-  return resolveRetrieval(scene).filter((doc) => doc.state === "match");
-}

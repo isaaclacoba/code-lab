@@ -103,7 +103,7 @@ export type {
   ResolvedDoc,
   DocState,
 } from "./core/retrieval-model.js";
-export { resolveRetrieval, retrievedDocs } from "./core/retrieval-model.js";
+export { resolveRetrieval } from "./core/retrieval-model.js";
 
 export type {
   PlanScene,
