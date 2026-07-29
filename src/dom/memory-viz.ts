@@ -12,6 +12,8 @@ import type {
   RegionName,
   VizAction,
   LegendItem,
+  Step,
+  VizLayout,
 } from "../core/memory-model.js";
 import { ALL_REGIONS } from "../core/memory-model.js";
 import { VizPlayer } from "../core/viz-player.js";
@@ -56,10 +58,18 @@ const MIN_STEP_MS = 2600;
 
 export class MemoryViz {
   private readonly root: HTMLElement;
-  private readonly player: VizPlayer;
+  private readonly visualCol: HTMLElement;
+  private readonly asideCol: HTMLElement;
+  private player: VizPlayer;
   private readonly panels: Panel[] = [];
   private readonly actions: VizAction[];
   private controls: VizControls | null = null;
+  private readonly handlers: VizControlsHandlers;
+  private readonly buildCtx: PanelBuildCtx;
+  private layout: VizLayout;
+  private steps: Step[];
+  private readonly deriveRefs: boolean;
+  private readonly autoDim: boolean;
 
   private scale = 1;
   private readonly nextHref?: string;
@@ -100,9 +110,12 @@ export class MemoryViz {
       config.awardedKey,
       typeof config.awardAmount === "number" ? config.awardAmount : 20,
     );
-    this.player = new VizPlayer(config.steps ?? [], {
-      deriveRefs: config.deriveRefs !== false,
-      autoDim: config.autoDim !== false,
+    this.deriveRefs = config.deriveRefs !== false;
+    this.autoDim = config.autoDim !== false;
+    this.steps = config.steps ?? [];
+    this.player = new VizPlayer(this.steps, {
+      deriveRefs: this.deriveRefs,
+      autoDim: this.autoDim,
     });
     this.autoplay = new Autoplay({
       stepMs: () => this.stepDurationMs(),
@@ -112,7 +125,7 @@ export class MemoryViz {
     });
     this.scale = config.fontScale ?? 1;
 
-    const handlers: VizControlsHandlers = {
+    this.handlers = {
       onPrev: () => this.step(this.player.prev(), false),
       onNext: () => {
         if (this.player.state.atEnd && this.nextHref) {
@@ -128,7 +141,7 @@ export class MemoryViz {
       onSeek: (i) => { this.stop(); this.step(this.player.goTo(i), false); },
     };
 
-    const buildCtx: PanelBuildCtx = {
+    this.buildCtx = {
       uid,
       code: config.code ?? [],
       labels: {
@@ -138,13 +151,13 @@ export class MemoryViz {
       regions,
       zoomTab,
       actions: this.actions,
-      handlers,
+      handlers: this.handlers,
       regionTags: config.regionTags ?? {},
       legend: config.legend,
       nextHref: this.nextHref,
     };
 
-    const layout = config.layout ?? {
+    this.layout = config.layout ?? {
       visual: [
         ...(showBoard ? [{ type: "board" } as PanelSpec] : []),
         { type: "die", regions } as PanelSpec,
@@ -157,32 +170,73 @@ export class MemoryViz {
     this.root.style.setProperty("--mv-fs", String(this.scale));
     if (config.background) this.root.style.setProperty("--mv-bg", config.background);
 
-    const visualCol = document.createElement("div");
-    visualCol.className = "cl-mv-visual";
-    (layout.visual ?? []).forEach((spec) => {
-      const p = this.makePanel(spec, buildCtx);
-      this.panels.push(p);
-      visualCol.appendChild(p.el);
-    });
+    this.visualCol = document.createElement("div");
+    this.visualCol.className = "cl-mv-visual";
+    this.asideCol = document.createElement("div");
+    this.asideCol.className = "cl-mv-aside";
+    this.root.append(this.visualCol);
 
-    const asideCol = document.createElement("div");
-    asideCol.className = "cl-mv-aside";
-    (layout.aside ?? []).forEach((spec) => {
-      const p = this.makePanel(spec, buildCtx);
-      this.panels.push(p);
-      asideCol.appendChild(p.el);
-    });
-
-    this.root.append(visualCol);
-    if (asideCol.childElementCount > 0) this.root.append(asideCol);
-    else this.root.classList.add("cl-mv-single");
+    this.buildPanels();
 
     host.appendChild(this.root);
-    if (this.controls) this.controls.setActiveSize(this.scale);
-    if (this.controls) this.controls.setDerived(deriveTrace(config.steps ?? []), handlers.onSeek);
+    this.wireControls();
     window.addEventListener("resize", this.onResize);
     this.refreshXp();
     this.step(this.player.state, false);
+  }
+
+  /** Replace the scene without tearing the widget down: rebuild the player and
+   *  the panels in place, and (by default) hold the current step index so a
+   *  level toggle does not send the learner back to the first step. `code` and
+   *  `layout` override the code lines and the panel arrangement when given. */
+  setSteps(
+    steps: Step[],
+    opts: { code?: string[]; layout?: VizLayout; preserveIndex?: boolean } = {},
+  ): void {
+    if (steps.length === 0) throw new Error("MemoryViz.setSteps needs at least one step");
+    this.stop();
+    const keepIndex = opts.preserveIndex !== false ? this.player.state.index : 0;
+    this.steps = steps;
+    if (opts.code) this.buildCtx.code = opts.code;
+    if (opts.layout) this.layout = opts.layout;
+    this.player = new VizPlayer(steps, { deriveRefs: this.deriveRefs, autoDim: this.autoDim });
+    this.buildPanels();
+    this.wireControls();
+    this.step(this.player.goTo(Math.min(keepIndex, steps.length - 1)), false);
+  }
+
+  /** (Re)build the visual + aside panels from the current layout into the two
+   *  columns. Clears any prior panels first, so it is safe to call repeatedly. */
+  private buildPanels(): void {
+    this.controls = null;
+    this.panels.length = 0;
+    this.visualCol.textContent = "";
+    this.asideCol.textContent = "";
+    (this.layout.visual ?? []).forEach((spec) => {
+      const p = this.makePanel(spec, this.buildCtx);
+      this.panels.push(p);
+      this.visualCol.appendChild(p.el);
+    });
+    (this.layout.aside ?? []).forEach((spec) => {
+      const p = this.makePanel(spec, this.buildCtx);
+      this.panels.push(p);
+      this.asideCol.appendChild(p.el);
+    });
+    if (this.asideCol.childElementCount > 0) {
+      if (!this.asideCol.parentNode) this.root.append(this.asideCol);
+      this.root.classList.remove("cl-mv-single");
+    } else {
+      if (this.asideCol.parentNode) this.asideCol.remove();
+      this.root.classList.add("cl-mv-single");
+    }
+  }
+
+  /** Feed the freshly built controls panel the font size and the derived-trace
+   *  scrubber for the current steps. No-op when the layout has no controls. */
+  private wireControls(): void {
+    if (!this.controls) return;
+    this.controls.setActiveSize(this.scale);
+    this.controls.setDerived(deriveTrace(this.steps), this.handlers.onSeek);
   }
 
   static create(host: HTMLElement, config: MemoryVizConfig): MemoryViz {

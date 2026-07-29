@@ -13,6 +13,8 @@ export { RoslynIframeRunner } from "./runners/roslyn-iframe.js";
 export type { RoslynIframeRunnerConfig, TraceOutcome } from "./runners/roslyn-iframe.js";
 
 export { MemoryViz } from "./dom/memory-viz.js";
+export { VizLab } from "./dom/viz-lab.js";
+export type { VizLabConfig, VizLevel } from "./dom/viz-lab.js";
 export type {
   MemoryVizConfig,
   MemoryScene,
