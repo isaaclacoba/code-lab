@@ -141,7 +141,7 @@ export type {
   DrawnQuestion,
   DrawnOption,
 } from "./core/quiz-model.js";
-export { drawQuiz, scoreQuiz, shuffle as shuffleQuiz, neededToPass, firstUnanswered } from "./core/quiz-model.js";
+export { drawQuiz, scoreQuiz, conceptResults, shuffle as shuffleQuiz, neededToPass, firstUnanswered } from "./core/quiz-model.js";
 
 export {
   PrismHighlighter,

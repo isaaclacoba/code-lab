@@ -5,6 +5,7 @@ import {
   firstUnanswered,
   neededToPass,
   scoreQuiz,
+  conceptResults,
   shuffle,
 } from "../src/core/quiz-model.ts";
 import type { QuizConfig } from "../src/core/quiz-model.ts";
@@ -80,4 +81,33 @@ test("scoreQuiz counts correct picks and applies the threshold", () => {
   const one = scoreQuiz(plan);
   assert.equal(one.score, 2);
   assert.equal(one.passed, false); // needed 3
+});
+
+test("conceptResults maps each tagged concept to whether it was answered right", () => {
+  const conceptCfg: QuizConfig = {
+    askCount: 4,
+    questions: [
+      { conceptId: "c-a", stem: "qa", options: ["a", "b"], correct: 0 },
+      { conceptId: "c-b", stem: "qb", options: ["a", "b"], correct: 0 },
+      { conceptId: "c-a", stem: "qa2", options: ["a", "b"], correct: 0 },
+      { stem: "q-untagged", options: ["a", "b"], correct: 0 },
+    ],
+  };
+  const plan = drawQuiz(conceptCfg, seeded(5));
+  // Answer only c-a's questions correctly; c-b wrong; untagged correct.
+  for (const q of plan.questions) {
+    const rightIdx = q.options.findIndex((o) => o.correct);
+    const wrongIdx = q.options.findIndex((o) => !o.correct);
+    q.chosen = q.conceptId === "c-b" ? wrongIdx : rightIdx;
+  }
+  const res = conceptResults(plan);
+  assert.equal(res["c-a"], true); // at least one right
+  assert.equal(res["c-b"], false); // its one question was wrong
+  assert.equal("" in res, false); // untagged questions are ignored
+  assert.equal(Object.keys(res).length, 2);
+});
+
+test("conceptResults ignores an unanswered plan's untagged questions and is empty when nothing is tagged", () => {
+  const plan = drawQuiz(cfg, seeded(9)); // cfg questions have no conceptId
+  assert.deepEqual(conceptResults(plan), {});
 });

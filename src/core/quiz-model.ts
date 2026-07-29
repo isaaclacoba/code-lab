@@ -5,6 +5,8 @@
 
 export interface QuizQuestion {
   concept?: string;
+  /** Stable concept id this question assesses, for per-concept progress. */
+  conceptId?: string;
   stem: string;
   options: string[];
   /** Index into `options` of the correct answer (pre-shuffle). */
@@ -42,6 +44,7 @@ export interface DrawnOption {
 /** One question as presented in an attempt: options shuffled, answer tracked. */
 export interface DrawnQuestion {
   concept: string;
+  conceptId: string;
   stem: string;
   why: string;
   options: DrawnOption[];
@@ -88,6 +91,7 @@ export function drawQuiz(config: QuizConfig, rng: Rng = Math.random): QuizPlan {
     .slice(0, askCount)
     .map((q) => ({
       concept: q.concept ?? "",
+      conceptId: q.conceptId ?? "",
       stem: q.stem,
       why: q.why ?? "",
       chosen: -1,
@@ -111,4 +115,18 @@ export function scoreQuiz(plan: QuizPlan): QuizResult {
     if (q.chosen >= 0 && q.options[q.chosen] && q.options[q.chosen].correct) score += 1;
   }
   return { score, total: plan.questions.length, passed: score >= plan.needed };
+}
+
+/** Per-concept pass for this attempt: a concept counts as passed if at least one
+ *  of its questions was answered correctly. Questions with no `conceptId` are
+ *  ignored. The map holds only the concepts touched this attempt. Pure. */
+export function conceptResults(plan: QuizPlan): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const q of plan.questions) {
+    const id = q.conceptId;
+    if (!id) continue;
+    const right = q.chosen >= 0 && !!q.options[q.chosen] && q.options[q.chosen].correct;
+    out[id] = (out[id] ?? false) || right;
+  }
+  return out;
 }

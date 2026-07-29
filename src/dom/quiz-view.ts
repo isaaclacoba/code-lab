@@ -6,7 +6,12 @@
 
 import type { QuizConfig, QuizPlan } from "../core/quiz-model.js";
 import type { KeyValueStore } from "../core/progress-store.js";
-import { drawQuiz, firstUnanswered, scoreQuiz } from "../core/quiz-model.js";
+import { drawQuiz, firstUnanswered, scoreQuiz, conceptResults } from "../core/quiz-model.js";
+
+/** Shared localStorage key holding every concept the learner has answered
+ *  correctly in any checkpoint: `{ [conceptId]: true }`. The glossary and the
+ *  in-lesson agenda read it to show per-concept "covered" state. */
+const CONCEPT_PROGRESS_KEY = "course_concept_progress";
 
 /** Persistence + XP hook, injected so the component is testable and reusable. */
 export interface QuizStore {
@@ -14,6 +19,8 @@ export interface QuizStore {
   markPassed(): void;
   getXP(): number;
   addXP(amount: number): void;
+  /** Merge this attempt's per-concept passes into shared course progress. */
+  saveConceptResults(results: Record<string, boolean>): void;
 }
 
 function localStore(
@@ -34,6 +41,17 @@ function localStore(
     markPassed: () => kv.setItem(awardedKey, JSON.stringify({ passed: true })),
     getXP: xp,
     addXP: (amount) => kv.setItem(xpKey, String(xp() + amount)),
+    saveConceptResults: (results) => {
+      try {
+        const prev = JSON.parse(kv.getItem(CONCEPT_PROGRESS_KEY) || "{}");
+        for (const [id, passed] of Object.entries(results)) {
+          if (passed) prev[id] = true; // monotonic: once covered, stays covered
+        }
+        kv.setItem(CONCEPT_PROGRESS_KEY, JSON.stringify(prev));
+      } catch {
+        /* storage unavailable - progress simply is not saved */
+      }
+    },
   };
 }
 
@@ -207,6 +225,7 @@ export class Quiz {
       }
     });
     this.graded = true;
+    this.store.saveConceptResults(conceptResults(this.plan));
     this.showResult();
   }
 
