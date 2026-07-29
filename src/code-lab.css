@@ -1004,3 +1004,38 @@
 .cl-quiz-result p { margin: 0; line-height: 1.55; }
 .cl-quiz-continue { margin-top: 12px; }
 .cl-quiz-continue:empty { margin-top: 0; }
+
+/* ---- Level-1 call stack panel ------------------------------------------- */
+.cl-mv .cl-mv-callstack { background: #fbfbf7; border-color: var(--mv-line); }
+.cl-mv .cl-mv-callstack .cl-mv-tag { color: #6a6f66; }
+.cl-mv .cl-mv-cs-frames { display: flex; flex-direction: column; gap: 8px; }
+.cl-mv .cl-mv-cs-frame { border: 1px solid #d7e3ff; background: #f7faff; border-radius: 9px; padding: 8px 9px; transition: border-color 0.2s, background 0.2s, box-shadow 0.2s, opacity 0.2s, transform 0.2s; }
+.cl-mv .cl-mv-cs-frame.is-active { border-color: #f59e0b; background: #fff7ea; box-shadow: 0 0 0 2px #fde3ad; }
+.cl-mv .cl-mv-cs-frame.is-caller { opacity: 0.72; background: #f8fafc; }
+.cl-mv .cl-mv-cs-title { font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-stack); font-weight: 600; margin-bottom: 6px; }
+.cl-mv .cl-mv-cs-frame.is-active .cl-mv-cs-title { color: #b45309; }
+.cl-mv .cl-mv-cs-locals { display: flex; flex-direction: column; gap: 4px; }
+.cl-mv .cl-mv-cs-row { display: grid; grid-template-columns: minmax(6ch, 32%) 1fr; align-items: center; gap: 12px; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 14px); background: #fff; border: 1px solid #d7e3ff; border-radius: 6px; padding: 3px 8px; }
+.cl-mv .cl-mv-cs-name { color: #475569; }
+.cl-mv .cl-mv-cs-name::after { content: " :"; }
+.cl-mv .cl-mv-cs-val { color: var(--mv-ink); font-weight: 500; word-break: break-word; }
+.cl-mv .cl-mv-cs-row.is-empty .cl-mv-cs-val { color: #b6bcc6; font-weight: 400; font-style: italic; }
+.cl-mv .cl-mv-cs-row.is-changed { border-color: #f59e0b; background: #fff7ea; box-shadow: 0 0 0 2px #fde3ad; }
+.cl-mv .cl-mv-cs-row.is-changed .cl-mv-cs-val { color: #b45309; font-weight: 700; }
+.cl-mv .cl-mv-cs-frame.enter { opacity: 0; transform: translateY(-6px) scale(0.98); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cl-mv .cl-mv-cs-frame { transition: none; }
+}
+
+/* ---- Scrubber enrichment: call-depth sparkline + notable-moment dots ----- */
+.cl-mv .cl-mv-scrubwrap { position: relative; margin-top: 10px; padding-top: 26px; }
+.cl-mv .cl-mv-scrubwrap .cl-mv-scrub { position: relative; z-index: 2; margin-top: 0; }
+.cl-mv .cl-mv-depth { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 24px; pointer-events: none; z-index: 0; opacity: 0.55; }
+.cl-mv .cl-mv-depth polyline { stroke: #2563eb; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cl-mv .cl-mv-marks { position: absolute; left: 0; right: 0; bottom: 0; height: 24px; pointer-events: none; z-index: 3; }
+.cl-mv .cl-mv-mark { position: absolute; top: 50%; width: 12px; height: 12px; padding: 0; border: 2px solid #1d4ed8; background: #2563eb; transform: translate(-50%, -50%); pointer-events: auto; cursor: pointer; border-radius: 50%; }
+.cl-mv .cl-mv-mark.is-call { border-color: #1d4ed8; background: #2563eb; }
+.cl-mv .cl-mv-mark.is-return { border-color: #475569; background: #fff; }
+.cl-mv .cl-mv-mark.is-new-object { width: 11px; height: 11px; border-radius: 3px; border-color: #166534; background: #22c55e; }
+.cl-mv .cl-mv-mark:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 3px; }

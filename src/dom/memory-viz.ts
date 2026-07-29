@@ -18,11 +18,13 @@ import { VizPlayer } from "../core/viz-player.js";
 import type { PlayerState } from "../core/viz-player.js";
 import { ProgressStore } from "../core/progress-store.js";
 import { Autoplay } from "../core/autoplay.js";
+import { deriveTrace } from "../core/exec-trace.js";
 import type { Panel, SyncCtx } from "./panel.js";
 import { BoardView } from "./board-view.js";
 import { MemoryDieView } from "./memory-die-view.js";
 import { CodePanel } from "./code-panel.js";
 import { VarTableView } from "./vartable-view.js";
+import { CallStackView } from "./callstack-view.js";
 import { NarrationView } from "./narration-view.js";
 import { AgentView } from "./agent-view.js";
 import { AgentLoopView } from "./agent-loop-view.js";
@@ -69,6 +71,7 @@ export class MemoryViz {
       new MemoryDieView(ctx.uid, ctx.code, ctx.labels, spec.regions ?? ctx.regions, ctx.zoomTab, ctx.regionTags),
     code: (_spec, ctx) => new CodePanel(ctx.code),
     vartable: () => new VarTableView(),
+    callstack: () => new CallStackView(),
     narration: () => new NarrationView(),
     agent: (spec) => new AgentView(spec.fan),
     agentloop: () => new AgentLoopView(),
@@ -174,6 +177,7 @@ export class MemoryViz {
 
     host.appendChild(this.root);
     if (this.controls) this.controls.setActiveSize(this.scale);
+    if (this.controls) this.controls.setDerived(deriveTrace(config.steps ?? []), handlers.onSeek);
     window.addEventListener("resize", this.onResize);
     this.refreshXp();
     this.step(this.player.state, false);

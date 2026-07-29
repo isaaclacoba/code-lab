@@ -4,6 +4,7 @@
 
 import type { Panel, SyncCtx } from "./panel.js";
 import type { LegendItem } from "../core/memory-model.js";
+import type { DerivedTrace, NotableKind } from "../core/exec-trace.js";
 
 export interface VizControlsHandlers {
   onPrev(): void;
@@ -30,6 +31,8 @@ const DEFAULT_LEGEND: LegendItem[] = [
   { sw: "#1f6f5f", label: "reference to an object", round: true },
 ];
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
 function legendHtml(items: LegendItem[]): string {
   return items
     .map((i) => {
@@ -37,6 +40,14 @@ function legendHtml(items: LegendItem[]): string {
       return `<span><i class="cl-mv-sw" style="background:${i.sw}${round}"></i>${i.label}</span>`;
     })
     .join("");
+}
+
+function stepPercent(step: number, total: number): number {
+  return total <= 1 ? 0 : (step / (total - 1)) * 100;
+}
+
+function notableLabel(kind: NotableKind): string {
+  return kind === "new-object" ? "new object" : kind;
 }
 
 export class VizControls implements Panel {
@@ -63,7 +74,11 @@ export class VizControls implements Panel {
           <button data-size="1.2" title="Large text" aria-label="Large text">L</button>
         </div>
       </div>
-      <input type="range" class="cl-mv-scrub" data-scrub min="0" value="0" step="1" aria-label="Step" />
+      <div class="cl-mv-scrubwrap">
+        <svg class="cl-mv-depth" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <input type="range" class="cl-mv-scrub" data-scrub min="0" value="0" step="1" aria-label="Step" />
+        <div class="cl-mv-marks" data-marks></div>
+      </div>
       <div class="cl-mv-legend">${legendHtml(legend && legend.length ? legend : DEFAULT_LEGEND)}</div>`;
 
     const controls = this.el.querySelector(".cl-mv-controls") as HTMLElement;
@@ -100,6 +115,43 @@ export class VizControls implements Panel {
   setActiveSize(scale: number): void {
     this.el.querySelectorAll<HTMLButtonElement>(".cl-mv-textsize button").forEach((b) => {
       b.classList.toggle("is-active", Number(b.dataset.size) === scale);
+    });
+  }
+
+  setDerived(derived: DerivedTrace, onJump: (step: number) => void): void {
+    const depth = this.el.querySelector(".cl-mv-depth") as SVGSVGElement;
+    const marks = this.el.querySelector("[data-marks]") as HTMLElement;
+    const total = derived.callDepth.length;
+
+    depth.textContent = "";
+    marks.textContent = "";
+
+    if (total > 0) {
+      const maxDepth = Math.max(1, ...derived.callDepth);
+      const points = derived.callDepth
+        .map((d, i) => {
+          const x = stepPercent(i, total);
+          const y = 90 - (Math.max(0, d) / maxDepth) * 75;
+          return `${x},${y}`;
+        })
+        .join(" ");
+      const line = document.createElementNS(SVG_NS, "polyline");
+      line.setAttribute("points", points);
+      line.setAttribute("fill", "none");
+      line.setAttribute("vector-effect", "non-scaling-stroke");
+      depth.appendChild(line);
+    }
+
+    derived.notables.forEach((notable) => {
+      const label = notableLabel(notable.kind);
+      const mark = document.createElement("button");
+      mark.type = "button";
+      mark.className = `cl-mv-mark is-${notable.kind}`;
+      mark.style.left = `${stepPercent(notable.step, total)}%`;
+      mark.setAttribute("aria-label", `Jump to ${label} at step ${notable.step}`);
+      mark.title = `Jump to ${label} at step ${notable.step}`;
+      mark.addEventListener("click", () => onJump(notable.step));
+      marks.appendChild(mark);
     });
   }
 
