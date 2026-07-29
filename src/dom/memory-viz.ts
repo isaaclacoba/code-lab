@@ -22,6 +22,7 @@ import type { Panel, SyncCtx } from "./panel.js";
 import { BoardView } from "./board-view.js";
 import { MemoryDieView } from "./memory-die-view.js";
 import { CodePanel } from "./code-panel.js";
+import { VarTableView } from "./vartable-view.js";
 import { NarrationView } from "./narration-view.js";
 import { AgentView } from "./agent-view.js";
 import { AgentLoopView } from "./agent-loop-view.js";
@@ -67,6 +68,7 @@ export class MemoryViz {
     die: (spec, ctx) =>
       new MemoryDieView(ctx.uid, ctx.code, ctx.labels, spec.regions ?? ctx.regions, ctx.zoomTab, ctx.regionTags),
     code: (_spec, ctx) => new CodePanel(ctx.code),
+    vartable: () => new VarTableView(),
     narration: () => new NarrationView(),
     agent: (spec) => new AgentView(spec.fan),
     agentloop: () => new AgentLoopView(),
