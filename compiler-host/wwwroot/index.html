@@ -236,7 +236,19 @@
                 window.addEventListener("message", async function (event) {
                     if (event.origin !== window.location.origin) return;
                     const data = event.data || {};
-                    if (data.type !== "coderunner:run") return;
+                    if (data.type !== "coderunner:run" && data.type !== "coderunner:trace") return;
+
+                    const target = event.source || window.parent;
+                    if (data.type === "coderunner:trace") {
+                        let trace;
+                        try {
+                            trace = await dotNetRef.invokeMethodAsync("Trace", data.code || "");
+                        } catch (err) {
+                            trace = { compiled: false, traceJson: null, runtimeError: String(err), errors: [] };
+                        }
+                        if (target) target.postMessage({ type: "coderunner:traceResult", id: data.id, result: trace }, event.origin);
+                        return;
+                    }
 
                     let result;
                     try {
@@ -244,7 +256,6 @@
                     } catch (err) {
                         result = { compiled: false, output: "", runtimeError: String(err), errors: [] };
                     }
-                    const target = event.source || window.parent;
                     if (target) target.postMessage({ type: "coderunner:result", id: data.id, result: result }, event.origin);
                 });
 

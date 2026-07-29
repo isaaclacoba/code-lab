@@ -1,4 +1,22 @@
 import type { CodeRunner, RunResult } from "../types.js";
+import type { ExecTrace } from "../core/exec-tracer-model.js";
+
+/** What the host sends back for a trace request, before we parse the payload. */
+interface TraceResponse {
+  compiled: boolean;
+  traceJson?: string | null;
+  runtimeError?: string | null;
+  errors: { line?: number | null; friendly?: string | null; raw: string }[];
+}
+
+/** The parsed outcome of a trace: the ExecTrace when it compiled, plus the same
+ *  friendly errors a run would report so a UI can explain a failure. */
+export interface TraceOutcome {
+  compiled: boolean;
+  trace?: ExecTrace;
+  runtimeError?: string | null;
+  errors: { line?: number | null; friendly?: string | null; raw: string }[];
+}
 
 export interface RoslynIframeRunnerConfig {
   /** URL of the compiler host page (a Blazor WASM app embedding the contract).
@@ -19,7 +37,7 @@ const DEFAULT_WARM_PROGRAM =
   "public class __Warm { public static void Main() { } }";
 
 interface Pending {
-  resolve: (r: RunResult) => void;
+  resolve: (r: unknown) => void;
   reject: (e: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }
@@ -32,6 +50,8 @@ interface Pending {
  *   - host -> parent: { type: "coderunner:ready" }
  *   - parent -> host: { type: "coderunner:run", id, code }
  *   - host -> parent: { type: "coderunner:result", id, result }
+ *   - parent -> host: { type: "coderunner:trace", id, code }
+ *   - host -> parent: { type: "coderunner:traceResult", id, result }
  */
 export class RoslynIframeRunner implements CodeRunner {
   private url: string;
@@ -60,12 +80,13 @@ export class RoslynIframeRunner implements CodeRunner {
 
   private handleMessage(event: MessageEvent): void {
     if (event.origin !== window.location.origin) return;
-    const data = (event.data || {}) as { type?: string; id?: number; result?: RunResult };
-    if (data.type === "coderunner:result" && data.id != null && this.pending.has(data.id)) {
+    const data = (event.data || {}) as { type?: string; id?: number; result?: unknown };
+    const isResult = data.type === "coderunner:result" || data.type === "coderunner:traceResult";
+    if (isResult && data.id != null && this.pending.has(data.id)) {
       const entry = this.pending.get(data.id)!;
       clearTimeout(entry.timer);
       this.pending.delete(data.id);
-      entry.resolve(data.result as RunResult);
+      entry.resolve(data.result);
     }
   }
 
@@ -123,12 +144,45 @@ export class RoslynIframeRunner implements CodeRunner {
         this.pending.delete(id);
         reject(new Error("The code took too long to run."));
       }, this.runTimeout);
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { resolve: (r) => resolve(r as RunResult), reject, timer });
       this.iframe!.contentWindow!.postMessage(
         { type: "coderunner:run", id, code },
         window.location.origin,
       );
     });
+  }
+
+  /** Trace a program: compile an instrumented copy in the host, run it, and
+   *  return the recorded ExecTrace (or the friendly errors if it did not
+   *  compile). Mirrors run() over the same iframe wire. */
+  async trace(code: string): Promise<TraceOutcome> {
+    await this.ensureFrame();
+    const id = ++this.seq;
+    const response = await new Promise<TraceResponse>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error("The code took too long to trace."));
+      }, this.runTimeout);
+      this.pending.set(id, { resolve: (r) => resolve(r as TraceResponse), reject, timer });
+      this.iframe!.contentWindow!.postMessage(
+        { type: "coderunner:trace", id, code },
+        window.location.origin,
+      );
+    });
+    let trace: ExecTrace | undefined;
+    if (response.compiled && response.traceJson) {
+      try {
+        trace = JSON.parse(response.traceJson) as ExecTrace;
+      } catch {
+        trace = undefined;
+      }
+    }
+    return {
+      compiled: response.compiled,
+      trace,
+      runtimeError: response.runtimeError ?? null,
+      errors: response.errors || [],
+    };
   }
 
   destroy(): void {

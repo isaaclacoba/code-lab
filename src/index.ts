@@ -10,7 +10,7 @@ export { loadMonaco } from "./editors/load-monaco.js";
 export type { LoadMonacoConfig } from "./editors/load-monaco.js";
 
 export { RoslynIframeRunner } from "./runners/roslyn-iframe.js";
-export type { RoslynIframeRunnerConfig } from "./runners/roslyn-iframe.js";
+export type { RoslynIframeRunnerConfig, TraceOutcome } from "./runners/roslyn-iframe.js";
 
 export { MemoryViz } from "./dom/memory-viz.js";
 export type {
@@ -38,6 +38,15 @@ export {
   referencedIds,
   resolveModel,
 } from "./core/memory-model.js";
+
+export { traceToSteps } from "./core/exec-tracer-model.js";
+export type {
+  ExecTrace,
+  TraceStep,
+  TraceFrame,
+  TraceVar,
+  TraceObject,
+} from "./core/exec-tracer-model.js";
 
 export type {
   AgentScene,

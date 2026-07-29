@@ -24,6 +24,10 @@ public class CompilerService
 
     public bool Ready => _references != null;
 
+    // The metadata references gathered by InitAsync, shared with the tracer so
+    // it compiles the instrumented program against the same runtime.
+    public IReadOnlyList<MetadataReference> References => _references ?? new List<MetadataReference>();
+
     public async Task InitAsync()
     {
         if (_references != null) return;

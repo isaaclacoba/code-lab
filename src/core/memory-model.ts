@@ -143,6 +143,11 @@ export interface Step {
   /** AI-track "planboard" scene: a goal decomposed into ordered, stateful steps.
    *  Rendered by a `planboard` panel. */
   plan?: PlanScene;
+  /** Incremental console output produced by THIS step (the delta since the
+   *  previous step). Additive: set by the generated-trace adapter; the
+   *  hand-authored scenes omit it, and panels that do not render output ignore
+   *  it. */
+  printed?: string;
 }
 
 /** An interactive verb: transforms the live model and returns the next one. */

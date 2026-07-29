@@ -1,0 +1,134 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { traceToSteps } from "../src/core/exec-tracer-model.ts";
+import type { ExecTrace } from "../src/core/exec-tracer-model.ts";
+
+const CODE = ["int a = 1;", "int b = 2;", "int t = a + b;", 'Console.WriteLine(t);'];
+
+function frame(vars: Array<[string, string]>) {
+  return { id: "main", name: "Main", vars: vars.map(([name, value]) => ({ name, value })) };
+}
+
+test("maps line to a 0-based pc and keeps the source", () => {
+  const trace: ExecTrace = {
+    code: CODE,
+    steps: [{ line: 1, frames: [frame([["a", "1"]])] }],
+  };
+  const steps = traceToSteps(trace);
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].pc, 0);
+  assert.equal(steps[0].codeLive, true);
+});
+
+test("value locals become value slots with stable ids", () => {
+  const trace: ExecTrace = { code: CODE, steps: [{ line: 1, frames: [frame([["a", "1"]])] }] };
+  const slot = traceToSteps(trace)[0].stack![0].vars[0];
+  assert.equal(slot.id, "main:a");
+  assert.equal(slot.k, "a");
+  assert.equal(slot.v, "1");
+  assert.equal(slot.ref, undefined);
+});
+
+test("a changed value is hot; an unchanged one is not; the first step is never hot", () => {
+  const trace: ExecTrace = {
+    code: CODE,
+    steps: [
+      { line: 1, frames: [frame([["a", "1"], ["b", "2"]])] },
+      { line: 2, frames: [frame([["a", "1"], ["b", "9"]])] },
+    ],
+  };
+  const steps = traceToSteps(trace);
+  // first step: nothing hot
+  assert.equal(steps[0].stack![0].vars.every((v) => !v.hot), true);
+  // second step: only b changed
+  const [a, b] = steps[1].stack![0].vars;
+  assert.equal(a.hot, false);
+  assert.equal(b.hot, true);
+});
+
+test("a newly appearing local is hot (created this step)", () => {
+  const trace: ExecTrace = {
+    code: CODE,
+    steps: [
+      { line: 1, frames: [frame([["a", "1"]])] },
+      { line: 2, frames: [frame([["a", "1"], ["b", "2"]])] },
+    ],
+  };
+  const b = traceToSteps(trace)[1].stack![0].vars[1];
+  assert.equal(b.k, "b");
+  assert.equal(b.hot, true);
+});
+
+test("a reference local becomes a ref slot, and null is a value", () => {
+  const trace: ExecTrace = {
+    code: ["Dog pet = new Dog();", "Dog stray = null;"],
+    steps: [
+      {
+        line: 1,
+        frames: [{ id: "main", name: "Main", vars: [{ name: "pet", ref: "o1" }, { name: "stray", value: "null" }] }],
+        heap: [{ id: "o1", type: "Dog", fields: [["Name", '"Rex"']] }],
+      },
+    ],
+  };
+  const [pet, stray] = traceToSteps(trace)[0].stack![0].vars;
+  assert.equal(pet.ref, "o1");
+  assert.equal(pet.v, undefined);
+  assert.equal(stray.ref, undefined);
+  assert.equal(stray.v, "null");
+});
+
+test("a re-pointed reference is hot", () => {
+  const mk = (ref: string): ExecTrace["steps"][number] => ({
+    line: 1,
+    frames: [{ id: "main", name: "Main", vars: [{ name: "pet", ref }] }],
+    heap: [{ id: ref, type: "Dog", fields: [] }],
+  });
+  const steps = traceToSteps({ code: [], steps: [mk("o1"), mk("o2")] });
+  assert.equal(steps[1].stack![0].vars[0].hot, true);
+});
+
+test("heap objects map through, and a changed field is hot", () => {
+  const mk = (name: string): ExecTrace["steps"][number] => ({
+    line: 1,
+    frames: [{ id: "main", name: "Main", vars: [{ name: "pet", ref: "o1" }] }],
+    heap: [{ id: "o1", type: "Dog", fields: [["Name", name], ["Age", "3"]] }],
+  });
+  const steps = traceToSteps({ code: [], steps: [mk('"Rex"'), mk('"Fido"')] });
+  const obj0 = steps[0].heap![0];
+  assert.equal(obj0.type, "Dog");
+  assert.deepEqual(obj0.hotFields, []); // first step
+  const obj1 = steps[1].heap![0];
+  assert.deepEqual(obj1.hotFields, ["Name"]); // only Name changed
+});
+
+test("incremental printed output is the delta of cumulative stdout", () => {
+  const trace: ExecTrace = {
+    code: [],
+    steps: [
+      { line: 1, frames: [frame([])], stdout: "" },
+      { line: 2, frames: [frame([])], stdout: "hello\n" },
+      { line: 3, frames: [frame([])], stdout: "hello\nworld\n" },
+    ],
+  };
+  const steps = traceToSteps(trace);
+  assert.equal(steps[0].printed, undefined);
+  assert.equal(steps[1].printed, "hello\n");
+  assert.equal(steps[2].printed, "world\n");
+});
+
+test("the last step narrates as finished; others narrate the source line", () => {
+  const trace: ExecTrace = {
+    code: CODE,
+    steps: [
+      { line: 3, frames: [frame([])] },
+      { line: 4, frames: [frame([])] },
+    ],
+  };
+  const steps = traceToSteps(trace);
+  assert.match(steps[0].narr, /int t = a \+ b;/);
+  assert.equal(steps[1].narr, "The program has finished.");
+});
+
+test("an empty trace yields no steps", () => {
+  assert.deepEqual(traceToSteps({ code: [], steps: [] }), []);
+});

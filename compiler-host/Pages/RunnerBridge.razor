@@ -27,9 +27,22 @@
         return new RunResult(result.Compiled, result.Output, result.RuntimeError, errors);
     }
 
+    [JSInvokable]
+    public async Task<TraceResponse> Trace(string code)
+    {
+        await Compiler.InitAsync();
+        var result = Tracer.Trace(code ?? "", Compiler.References);
+        var errors = result.Errors
+            .Select(e => new RunError(e.Line, e.Friendly, e.Raw))
+            .ToList();
+        return new TraceResponse(result.Compiled, result.TraceJson, result.RuntimeError, errors);
+    }
+
     public void Dispose() => _ref?.Dispose();
 
     public record RunError(int? Line, string? Friendly, string Raw);
 
     public record RunResult(bool Compiled, string Output, string? RuntimeError, List<RunError> Errors);
+
+    public record TraceResponse(bool Compiled, string? TraceJson, string? RuntimeError, List<RunError> Errors);
 }
