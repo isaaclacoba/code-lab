@@ -48,8 +48,10 @@ function activeFrame(stack: Frame[] | undefined): Frame | undefined {
 }
 
 function valueText(v: Slot): string {
+  // Level 0 shows only the value a name holds - never the heap arrow/id that a
+  // `ref` implies (arrows are reserved for the higher-level panels). A reference
+  // slot therefore falls through to its author-provided display value.
   if (v.empty) return "unassigned";
-  if (v.ref) return "\u2192 " + v.ref;
   return v.v ?? "";
 }
 
