@@ -25,6 +25,7 @@ import { MemoryDieView } from "./memory-die-view.js";
 import { CodePanel } from "./code-panel.js";
 import { VarTableView } from "./vartable-view.js";
 import { CallStackView } from "./callstack-view.js";
+import { HeapCardsView } from "./heapcards-view.js";
 import { NarrationView } from "./narration-view.js";
 import { AgentView } from "./agent-view.js";
 import { AgentLoopView } from "./agent-loop-view.js";
@@ -72,6 +73,7 @@ export class MemoryViz {
     code: (_spec, ctx) => new CodePanel(ctx.code),
     vartable: () => new VarTableView(),
     callstack: () => new CallStackView(),
+    heapcards: (_spec, ctx) => new HeapCardsView(ctx.uid),
     narration: () => new NarrationView(),
     agent: (spec) => new AgentView(spec.fan),
     agentloop: () => new AgentLoopView(),

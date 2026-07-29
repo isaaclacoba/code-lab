@@ -187,7 +187,7 @@ export const FULL_REGIONS: RegionName[] = ["code", "rodata", "data", "bss", "hea
 /** A composable panel a lesson can place in the layout. New panel types (bits,
  *  pipeline, network, a code editor merged from CodeLab, ...) extend this union
  *  and get a factory in the facade; existing panels are untouched (open/closed). */
-export type PanelType = "board" | "die" | "code" | "vartable" | "callstack" | "narration" | "controls" | "agent" | "agentloop" | "memoryshelf" | "toolrack" | "transcript" | "retrieval" | "planboard";
+export type PanelType = "board" | "die" | "code" | "vartable" | "callstack" | "heapcards" | "narration" | "controls" | "agent" | "agentloop" | "memoryshelf" | "toolrack" | "transcript" | "retrieval" | "planboard";
 
 export interface PanelSpec {
   type: PanelType;
@@ -264,6 +264,19 @@ export function deriveRefs(stack: Frame[] = []): Ref[] {
 
 export function referencedIds(refs: Ref[]): Set<string> {
   return new Set(refs.map((r) => r.to));
+}
+
+/** How a slot reads at level 2. A `ref` points to a heap object (draw an arrow);
+ *  a slot whose value is exactly "null" is an explicit null reference (no arrow,
+ *  shown in red); an `empty` slot is declared-but-unassigned; everything else is
+ *  a value shown inline. Pure so the projection is unit-tested without a browser. */
+export type SlotKind = "empty" | "null" | "ref" | "value";
+
+export function slotKind(slot: Slot): SlotKind {
+  if (slot.empty) return "empty";
+  if (slot.ref) return "ref";
+  if (slot.v === "null") return "null";
+  return "value";
 }
 
 /** Turn a raw step into a fully-resolved model: arrows computed and unreferenced
