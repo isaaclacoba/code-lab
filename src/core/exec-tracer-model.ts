@@ -82,7 +82,7 @@ export interface ExecTrace {
  *  change highlights (hot / hotFields) and the incremental printed output. */
 export function traceToSteps(trace: ExecTrace): Step[] {
   const src = trace.code ?? [];
-  const steps = trace.steps ?? [];
+  const steps = collapseCallEntries(trace.steps ?? []);
   const out: Step[] = [];
   let prevValues = new Map<string, string>();
   let prevFields = new Map<string, string>();
@@ -157,6 +157,37 @@ export function traceToSteps(trace: ExecTrace): Step[] {
   }
 
   return out;
+}
+
+/** A call's entry snapshot lands on the first statement's line (the tracer's
+ *  Enter records the fresh frame at `FirstBodyLine`), so every method or
+ *  constructor call shows that line twice in a row: once the instant the frame
+ *  is pushed, then again as the first statement runs. For a one-line method those
+ *  are the only two steps for the frame, and the repeat is pure noise - you click
+ *  Next and nothing moves. Drop the entry snapshot when the very next step is the
+ *  same line in the same freshly pushed frame. The stack still visibly grows at
+ *  the surviving step (its depth is one deeper than the caller's), so the "a call
+ *  pushes a frame" beat is kept - it just happens together with the first
+ *  statement instead of one dead click earlier. The first step (Main's own entry,
+ *  which has no caller before it) is never dropped, so a trace still starts in
+ *  Main. */
+function collapseCallEntries(steps: TraceStep[]): TraceStep[] {
+  const drop = new Set<number>();
+  for (let i = 1; i + 1 < steps.length; i++) {
+    const prev = steps[i - 1];
+    const cur = steps[i];
+    const next = steps[i + 1];
+    const curLen = cur.frames?.length ?? 0;
+    const pushed = curLen > (prev.frames?.length ?? 0);
+    if (!pushed) continue;
+    if (cur.line !== next.line) continue;
+    if (curLen !== (next.frames?.length ?? 0)) continue;
+    const curTop = cur.frames?.[curLen - 1];
+    const nextTop = next.frames?.[curLen - 1];
+    if (!curTop || !nextTop || curTop.id !== nextTop.id) continue;
+    drop.add(i);
+  }
+  return drop.size ? steps.filter((_, i) => !drop.has(i)) : steps;
 }
 
 function frameToFrame(

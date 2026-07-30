@@ -175,7 +175,10 @@ export class VizLab {
       this.lastTrace = outcome.trace;
       this.lastSteps = traceToSteps(outcome.trace);
       this.render();
-      const n = outcome.trace.steps.length;
+      // Count the steps the learner will actually click through (the rendered
+      // steps less the terminal "finished" beat), so this stays in step with the
+      // stepper after redundant call-entry snapshots are collapsed.
+      const n = Math.max(0, this.lastSteps.length - 1);
       let msg = `Traced ${n} step${n === 1 ? "" : "s"}.`;
       if (outcome.trace.truncated) msg += " Stopped early - the program ran too long.";
       if (outcome.runtimeError) msg += ` It threw: ${outcome.runtimeError}`;

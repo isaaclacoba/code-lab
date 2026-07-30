@@ -1112,7 +1112,12 @@
    memory view). Wide screens sit them side by side (see the media query below):
    the editor rarely needs more than ~80 columns, so its spare width goes to
    showing the call stack and heap in parallel. */
-.cl-vl { display: grid; gap: 1rem; }
+/* --vl-editor-max / --vl-aside-min: the wide-screen column widths, as tokens
+   so a page or theme can retune them (e.g. .cl-vl { --vl-editor-max: 50rem })
+   without editing the engine. The 1240px breakpoint below can't read a custom
+   property (media conditions can't), so it stays literal and is kept roughly in
+   step with these two (43rem + 33rem + gap). */
+.cl-vl { --vl-editor-max: 43rem; --vl-aside-min: 33rem; display: grid; gap: 1rem; }
 .cl-vl-editor { display: grid; gap: 0.6rem; }
 .cl-vl-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
 .cl-vl-run { min-width: 9rem; }
@@ -1131,7 +1136,7 @@
    by the taller editor, so the memory picture grows with the call stack while the
    narration and transport controls stay pinned to the bottom. */
 @media (min-width: 1240px) {
-  .cl-vl { grid-template-columns: minmax(0, 43rem) minmax(33rem, 1fr); align-items: stretch; gap: 1.4rem; }
+  .cl-vl { grid-template-columns: minmax(0, var(--vl-editor-max)) minmax(var(--vl-aside-min), 1fr); align-items: stretch; gap: 1.4rem; }
   .cl-vl-stage { display: flex; }
   .cl-vl-stage .cl-mv { flex: 1; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
   .cl-vl-stage .cl-mv .cl-mv-visual { min-height: 0; display: flex; flex-direction: column; }

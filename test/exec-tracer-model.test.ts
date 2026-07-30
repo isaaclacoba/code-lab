@@ -195,3 +195,49 @@ test("a heap object carries its per-type instance number through", () => {
 test("an empty trace yields no steps", () => {
   assert.deepEqual(traceToSteps({ code: [], steps: [] }), []);
 });
+
+test("a call's redundant entry snapshot is collapsed into its first statement", () => {
+  // Main (depth 1) calls Speak (depth 2). The tracer emits the callee's entry
+  // snapshot on the same line as its first statement, so that line would show
+  // twice; the entry is dropped and the frame appears together with its body.
+  const mainFr = { id: "f1", name: "Main", kind: "entry", vars: [] as { name: string; value?: string }[] };
+  const speakFr = { id: "f2", name: "Speak", kind: "method", vars: [] as { name: string; value?: string }[] };
+  const trace: ExecTrace = {
+    code: ["class C {", "  string Speak() {", '    return "Meow";', "  }", "}"],
+    steps: [
+      { line: 1, frames: [mainFr] },
+      { line: 3, frames: [mainFr, speakFr] }, // Speak entry snapshot
+      { line: 3, frames: [mainFr, speakFr] }, // first statement runs (same line)
+      { line: 1, frames: [mainFr] }, // back in Main after the call returns
+    ],
+  };
+  const steps = traceToSteps(trace);
+  // 4 raw steps - 1 collapsed entry + 1 terminal = 4 rendered steps.
+  assert.equal(steps.length, 4);
+  // The two same-line depth-2 steps became one.
+  const speakSteps = steps.filter((s) => s.stack!.length === 2);
+  assert.equal(speakSteps.length, 1);
+  // The stack still grows into Speak at that surviving step.
+  assert.equal(speakSteps[0].stack![1].name, "Speak");
+  assert.equal(speakSteps[0].pc, 2); // line 3, 0-based
+});
+
+test("Main's own entry is kept, and two same-line statements in one frame are not merged", () => {
+  const mainFr = (vars: Array<[string, string]>) => ({
+    id: "f1",
+    name: "Main",
+    vars: vars.map(([name, value]) => ({ name, value })),
+  });
+  const trace: ExecTrace = {
+    code: ["int a = 1; int b = 2;"], // two statements authored on one line
+    steps: [
+      { line: 1, frames: [mainFr([["a", "1"]])] }, // Main entry (no caller before it)
+      { line: 1, frames: [mainFr([["a", "1"], ["b", "2"]])] }, // second statement, same line, same frame
+    ],
+  };
+  const steps = traceToSteps(trace);
+  // Neither step is dropped (no push between them, and step 0 is Main's entry):
+  // two real statements plus the terminal step.
+  assert.equal(steps.length, 3);
+  assert.equal(steps[1].stack![0].vars[1].hot, true); // b still shows as newly set
+});
