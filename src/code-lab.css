@@ -1099,18 +1099,16 @@
 .cl-vl-editor { display: grid; gap: 0.6rem; }
 .cl-vl-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
 .cl-vl-run { min-width: 9rem; }
-.cl-vl-levels { display: inline-flex; border: 1px solid var(--cl-line); border-radius: 8px; overflow: hidden; }
-.cl-vl-levels .cl-vl-level { border: 0; border-radius: 0; background: transparent; padding: 0.4rem 0.7rem; }
-.cl-vl-levels .cl-vl-level + .cl-vl-level { border-left: 1px solid var(--cl-line); }
-.cl-vl-levels .cl-vl-level[aria-pressed="true"] { background: var(--cl-accent); color: var(--cl-ink); font-weight: 600; }
 .cl-vl-status { font-size: 0.85rem; color: var(--cl-ink-soft); }
 .cl-vl-monaco { min-height: 240px; border: 1px solid var(--cl-line); border-radius: var(--cl-radius); overflow: hidden; }
 .cl-vl-stage { min-height: 120px; }
 .cl-vl-hint { margin: 0; padding: 1.4rem; text-align: center; color: var(--cl-ink-soft); border: 1px dashed var(--cl-line); border-radius: var(--cl-radius); }
 /* On the Visualize surface only: keep the narration and the transport controls
-   together at the top of the aside (no dead gap on a tall left column), and give
-   the code panel its own scroll so a long program keeps the running line in view
-   (the code panel auto-scrolls the active line into this box). */
+   together at the top of the aside, so there is no dead gap on a tall column. */
 .cl-vl-stage .cl-mv .cl-mv-aside { grid-template-rows: none; grid-auto-rows: max-content; align-content: start; }
 .cl-vl-stage .cl-mv .cl-mv-aside > .cl-mv-narr { align-self: start; }
-.cl-vl-stage .cl-mv .cl-mv-codepanel ol { max-height: 48vh; overflow: auto; overscroll-behavior: contain; }
+/* The running line, highlighted in the editor itself (so the code is shown once,
+   not duplicated in a separate panel). Monaco renders these decorations in the
+   page DOM, so a plain class rule reaches them. */
+.monaco-editor .cl-vl-pcline { background: rgba(63, 157, 134, 0.28); box-shadow: inset 3px 0 0 #3f9d86; }
+.monaco-editor .cl-vl-pcline-gutter { background: #3f9d86; width: 3px !important; margin-left: 2px; }

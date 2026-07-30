@@ -31,7 +31,7 @@ export class HeapCardsView implements Panel {
     this.el = document.createElement("div");
     this.el.className = "cl-mv-region cl-mv-heapcards";
     this.el.innerHTML =
-      `<span class="cl-mv-tag">MEMORY <span>\u00b7 names on the left, objects on the right</span></span>` +
+      `<span class="cl-mv-tag">MEMORY <span>\u00b7 the call stack on the left, objects on the heap on the right</span></span>` +
       `<div class="cl-mv-hp-statics" data-hpstatics></div>` +
       `<div class="cl-mv-hp-cols">` +
       `<div class="cl-mv-hp-roots" data-hproots></div>` +

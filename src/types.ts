@@ -52,6 +52,9 @@ export interface EditorAdapter {
   setReadOnly(readOnly: boolean): void;
   /** Optional inline error markers, when the editor supports them. */
   setMarkers?(errors: CompileError[]): void;
+  /** Optional running-line highlight. `line` is a 0-based source line;
+   *  pass null (or a negative line) to clear it. */
+  highlightLine?(line: number | null): void;
   destroy(): void;
 }
 

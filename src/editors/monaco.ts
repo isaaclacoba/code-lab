@@ -28,6 +28,7 @@ export class MonacoEditor implements EditorAdapter {
   private monaco: MonacoNamespace | undefined;
   private theme: string;
   private editor: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  private pcDecorationIds: string[] = [];
 
   constructor(config: MonacoEditorConfig = {}) {
     this.monaco = config.monaco;
@@ -98,6 +99,32 @@ export class MonacoEditor implements EditorAdapter {
 
   setReadOnly(readOnly: boolean): void {
     if (this.editor) this.editor.updateOptions({ readOnly });
+  }
+
+  // Paint a whole-line highlight on the running source line and scroll it into
+  // view. `line` is 0-based (the trace model's pc); Monaco lines are 1-based.
+  highlightLine(line: number | null): void {
+    if (!this.editor || !this.monaco) return;
+    if (line == null || line < 0) {
+      this.pcDecorationIds = this.editor.deltaDecorations(this.pcDecorationIds, []);
+      return;
+    }
+    const model = this.editor.getModel?.();
+    const maxLine = model ? model.getLineCount() : line + 1;
+    const ln = Math.min(Math.max(1, line + 1), maxLine);
+    this.pcDecorationIds = this.editor.deltaDecorations(this.pcDecorationIds, [
+      {
+        range: new this.monaco.Range(ln, 1, ln, 1),
+        options: {
+          isWholeLine: true,
+          className: "cl-vl-pcline",
+          linesDecorationsClassName: "cl-vl-pcline-gutter",
+        },
+      },
+    ]);
+    if (typeof this.editor.revealLineInCenterIfOutsideViewport === "function") {
+      this.editor.revealLineInCenterIfOutsideViewport(ln);
+    }
   }
 
   setMarkers(errors: CompileError[]): void {

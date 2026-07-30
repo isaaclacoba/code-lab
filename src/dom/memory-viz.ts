@@ -76,6 +76,7 @@ export class MemoryViz {
   private readonly nextHref?: string;
   private readonly nextLabel?: string;
   private readonly onXpChange?: (xp: number) => void;
+  private readonly onStep?: (info: { pc: number; index: number; total: number }) => void;
   private readonly progress: ProgressStore;
   private autoplay!: Autoplay;
 
@@ -110,6 +111,7 @@ export class MemoryViz {
     this.nextHref = config.nextHref;
     this.nextLabel = config.nextLabel;
     this.onXpChange = config.onXpChange;
+    this.onStep = config.onStep;
     this.progress = new ProgressStore(
       config.xpKey ?? "codelab_xp",
       config.awardedKey,
@@ -266,6 +268,7 @@ export class MemoryViz {
   private step(state: PlayerState, animate = true): void {
     if (this.controls) this.controls.resetActions();
     this.syncAll(state);
+    this.onStep?.({ pc: state.model.pc ?? -1, index: state.index, total: state.total });
     if (animate) this.animateAll(state);
     if (state.atEnd) {
       this.stop();

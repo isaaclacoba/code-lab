@@ -6,7 +6,7 @@ import type { ExecTrace } from "../core/exec-tracer-model.js";
 import type { Step } from "../core/memory-model.js";
 import { MemoryViz } from "./memory-viz.js";
 import { renderErrorPanel } from "./error-panel.js";
-import type { LegendItem, PanelSpec, PanelType, VizLayout } from "../core/memory-model.js";
+import type { LegendItem, PanelSpec, VizLayout } from "../core/memory-model.js";
 import type { CompileError } from "../types.js";
 
 /** The trace wire reports optional line/friendly as number|string|null; the
@@ -21,11 +21,9 @@ function normalizeErrors(
   }));
 }
 
-/** How much of the memory model to reveal. Maps to a MemoryViz panel:
- *  memory -> call frames + heap objects together, values -> a flat variable table. */
+/** @deprecated The surface now always shows the full memory view (the call stack
+ *  and the heap together); this alias is kept only so older imports still type. */
 export type VizLevel = "values" | "memory";
-
-type LegacyVizLevel = VizLevel | "callstack" | "heap";
 
 export interface VizLabConfig {
   /** URL of the compiler host that implements the trace wire (same-origin).
@@ -33,8 +31,9 @@ export interface VizLabConfig {
   runnerUrl: string;
   /** Code shown in the editor on first load. */
   starter?: string;
-  /** Which level of detail to render first. Default "memory". */
-  level?: LegacyVizLevel;
+  /** @deprecated The surface no longer has a level toggle - it always shows the
+   *  full memory view. Accepted and ignored for backward compatibility. */
+  level?: string;
   /** Editor language id for Monaco. Default "csharp". */
   language?: string;
   /** Legend swatches passed through to the visualiser controls. */
@@ -42,11 +41,6 @@ export interface VizLabConfig {
   /** Max wait for the host to warm up, in ms. Passed to the runner. */
   readyTimeout?: number;
 }
-
-const LEVELS: { id: VizLevel; label: string; panel: PanelType }[] = [
-  { id: "memory", label: "Memory", panel: "heapcards" },
-  { id: "values", label: "Simple values", panel: "vartable" },
-];
 
 const DEFAULT_STARTER = [
   "class Program",
@@ -61,27 +55,25 @@ const DEFAULT_STARTER = [
   "}",
 ].join("\n");
 
-function normalizeLevel(level: LegacyVizLevel): VizLevel {
-  return level === "values" ? "values" : "memory";
-}
-
 /** The "Visualize my code" surface: a Monaco editor whose C# is traced by the
  *  real compiler host, then animated by the same MemoryViz renderer the
  *  hand-authored scenes use. It is pure composition - editor, the runner's
  *  trace() wire, the traceToSteps adapter, and MemoryViz - so there is no new
- *  engine, runner, or renderer here. */
+ *  engine, runner, or renderer here.
+ *
+ *  There is one view: the full memory picture (the call stack and the heap
+ *  objects side by side). The running line is highlighted in the editor itself,
+ *  so the code is shown once, not duplicated in a separate panel. */
 export class VizLab {
   private readonly root: HTMLElement;
   private readonly editorHost: HTMLElement;
   private readonly stage: HTMLElement;
   private readonly statusEl: HTMLElement;
   private readonly vizBtn: HTMLButtonElement;
-  private readonly levelBtns = new Map<VizLevel, HTMLButtonElement>();
 
   private readonly editor = new MonacoEditor();
   private readonly runner: IframeRunner;
 
-  private level: VizLevel;
   private legend?: LegendItem[];
   private readonly language: string;
   private lastTrace: ExecTrace | null = null;
@@ -90,7 +82,6 @@ export class VizLab {
   private ready = false;
 
   private constructor(host: HTMLElement, config: VizLabConfig) {
-    this.level = normalizeLevel(config.level ?? "memory");
     this.legend = config.legend;
     this.language = config.language ?? "csharp";
     this.runner = new IframeRunner({
@@ -115,28 +106,12 @@ export class VizLab {
     this.vizBtn.setAttribute("data-viz", "");
     this.vizBtn.addEventListener("click", () => void this.visualize());
 
-    const levelGroup = document.createElement("div");
-    levelGroup.className = "cl-vl-levels";
-    levelGroup.setAttribute("role", "group");
-    levelGroup.setAttribute("aria-label", "Level of detail");
-    for (const lvl of LEVELS) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "cl-btn cl-vl-level";
-      b.textContent = lvl.label;
-      b.setAttribute("data-level", lvl.id);
-      b.setAttribute("aria-pressed", String(lvl.id === this.level));
-      b.addEventListener("click", () => this.setLevel(lvl.id));
-      this.levelBtns.set(lvl.id, b);
-      levelGroup.appendChild(b);
-    }
-
     this.statusEl = document.createElement("span");
     this.statusEl.className = "cl-vl-status";
     this.statusEl.setAttribute("role", "status");
     this.statusEl.setAttribute("aria-live", "polite");
 
-    toolbar.append(this.vizBtn, levelGroup, this.statusEl);
+    toolbar.append(this.vizBtn, this.statusEl);
 
     this.editorHost = document.createElement("div");
     this.editorHost.className = "cl-vl-monaco";
@@ -214,34 +189,18 @@ export class VizLab {
     }
   }
 
-  private setLevel(level: VizLevel): void {
-    if (level === this.level) return;
-    this.level = level;
-    for (const [id, btn] of this.levelBtns) btn.setAttribute("aria-pressed", String(id === level));
-    if (!this.lastTrace || !this.lastSteps) return;
-    // Same trace, a different panel: keep the learner's place in the run.
-    if (this.viz) {
-      this.viz.setSteps(this.lastSteps, {
-        code: this.lastTrace.code,
-        layout: this.layoutFor(level),
-        preserveIndex: true,
-      });
-    } else {
-      this.render();
-    }
-  }
-
-  private layoutFor(level: VizLevel): VizLayout {
-    const panel = LEVELS.find((l) => l.id === level)!.panel;
+  /** The one layout: the memory view (call stack + heap objects) in the wide
+   *  column, narration and controls in the reading rail. */
+  private memoryLayout(): VizLayout {
     return {
-      visual: [{ type: "code" }, { type: panel }] as PanelSpec[],
+      visual: [{ type: "heapcards" }] as PanelSpec[],
       aside: [{ type: "narration" }, { type: "controls" }] as PanelSpec[],
     };
   }
 
   private render(): void {
     if (!this.lastTrace || !this.lastSteps) return;
-    const layout = this.layoutFor(this.level);
+    const layout = this.memoryLayout();
     if (this.viz) {
       this.viz.setSteps(this.lastSteps, {
         code: this.lastTrace.code,
@@ -258,10 +217,12 @@ export class VizLab {
       legend: this.legend,
       deriveRefs: true,
       autoDim: true,
+      onStep: (info) => this.editor.highlightLine?.(info.pc),
     });
   }
 
   private showHint(text: string): void {
+    this.editor.highlightLine?.(null);
     this.teardownViz();
     this.stage.textContent = "";
     const hint = document.createElement("p");
@@ -271,6 +232,7 @@ export class VizLab {
   }
 
   private showErrors(errors: CompileError[]): void {
+    this.editor.highlightLine?.(null);
     this.teardownViz();
     this.stage.textContent = "";
     this.stage.appendChild(renderErrorPanel(errors));

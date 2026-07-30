@@ -244,6 +244,10 @@ export interface MemoryVizConfig {
   /** Called whenever the tracked XP changes (after awarding on the last step),
    *  so the host can reflect it in its own UI. The widget owns no XP label. */
   onXpChange?: (xp: number) => void;
+  /** Called after each step is rendered with the current program-counter line
+   *  and position, so a host can mirror the running line elsewhere (e.g. its
+   *  own editor). `pc` is the 0-based source line, or -1 when there is none. */
+  onStep?: (info: { pc: number; index: number; total: number }) => void;
   /** CSS background for the whole widget (switch the backdrop entirely). */
   background?: string;
   /** Starting text scale (1 = default). The viewer can still adjust it live. */
