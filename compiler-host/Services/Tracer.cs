@@ -293,7 +293,7 @@ public static class Tracer
             var isMain = name == "Main";
             var pre = new List<StatementSyntax>();
             if (isMain) pre.Add(HookCall("Begin"));
-            pre.Add(HookCall("Enter", Literal(name)));
+            pre.Add(EnterCall(name, FirstBodyLine(node.Body)));
 
             var body = TryFinally(visited.Body.Statements, pre);
             return visited.WithBody(body);
@@ -306,7 +306,7 @@ public static class Tracer
 
             // A constructor is a call too: push a "new Type" frame so a `new Fake(...)`
             // in Main shows the object being built, then unwinds.
-            var pre = new List<StatementSyntax> { HookCall("Enter", Literal("new " + node.Identifier.Text)) };
+            var pre = new List<StatementSyntax> { EnterCall("new " + node.Identifier.Text, FirstBodyLine(node.Body)) };
             var body = TryFinally(visited.Body.Statements, pre);
             return visited.WithBody(body);
         }
@@ -322,7 +322,10 @@ public static class Tracer
             // block. We map each original global statement to its plan entry.
             var origGlobals = node.Members.OfType<GlobalStatementSyntax>().ToList();
             var members = new List<MemberDeclarationSyntax>();
-            var prelude = new List<StatementSyntax> { HookCall("Begin"), HookCall("Enter", Literal("Main")) };
+            var firstLine = origGlobals.Count > 0
+                ? origGlobals[0].Statement.GetLocation().GetLineSpan().StartLinePosition.Line + 1
+                : 1;
+            var prelude = new List<StatementSyntax> { HookCall("Begin"), EnterCall("Main", firstLine) };
             foreach (var s in prelude) members.Add(GlobalStatement(s));
 
             for (var i = 0; i < origGlobals.Count; i++)
@@ -377,6 +380,19 @@ public static class Tracer
                     IdentifierName(v))));
             }
             return ExpressionStatement(Invoke("Step", args.ToArray()));
+        }
+
+        private static ExpressionStatementSyntax EnterCall(string name, int line)
+            => ExpressionStatement(Invoke("Enter",
+                Argument(LiteralExpression(SyntaxKind.StringLiteralExpression, Literal(name))),
+                Argument(LiteralExpression(SyntaxKind.NumericLiteralExpression, Literal(line)))));
+
+        private static int FirstBodyLine(BlockSyntax? body)
+        {
+            if (body is null) return 1;
+            var first = body.Statements.FirstOrDefault();
+            var loc = first is not null ? first.GetLocation() : body.OpenBraceToken.GetLocation();
+            return loc.GetLineSpan().StartLinePosition.Line + 1;
         }
 
         private static ExpressionStatementSyntax HookCall(string method, SyntaxToken? literal = null)
@@ -459,9 +475,15 @@ internal static class __CLTrace
         Console.SetOut(_out);
     }
 
-    public static void Enter(string name)
+    public static void Enter(string name, int line)
     {
         _stack.Add(new Frame { Id = "f" + (++_callSeq), Name = name });
+        // A call just started: record the fresh frame at its first line so the call
+        // stack visibly grows here, before the call's body runs. This is what makes a
+        // trace start in Main rather than jumping straight into the first callee.
+        if (Stopped) return;
+        if (++_count > _budget) { Truncated = true; Stopped = true; throw new __CLStop(); }
+        _steps.Add(Snapshot(line));
     }
 
     public static void Leave()
