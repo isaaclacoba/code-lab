@@ -267,11 +267,13 @@ public static class Tracer
                 {
                     if (Exits(node.Statements[i]))
                     {
+                        rebuilt.Add(AtCall(info.Line)); // this frame is paused here now
                         rebuilt.Add(StepCall(info)); // snapshot before control leaves the block
                         rebuilt.Add(visited.Statements[i]);
                     }
                     else
                     {
+                        rebuilt.Add(AtCall(info.Line));
                         rebuilt.Add(visited.Statements[i]);
                         rebuilt.Add(StepCall(info));
                     }
@@ -338,11 +340,13 @@ public static class Tracer
                 {
                     if (Exits(origGlobals[i].Statement))
                     {
+                        members.Add(GlobalStatement(AtCall(info.Line)));
                         members.Add(GlobalStatement(StepCall(info)));
                         members.Add(globals[i]);
                     }
                     else
                     {
+                        members.Add(GlobalStatement(AtCall(info.Line)));
                         members.Add(globals[i]);
                         members.Add(GlobalStatement(StepCall(info)));
                     }
@@ -385,6 +389,10 @@ public static class Tracer
             }
             return ExpressionStatement(Invoke("Step", args.ToArray()));
         }
+
+        private static ExpressionStatementSyntax AtCall(int line)
+            => ExpressionStatement(Invoke("At",
+                Argument(LiteralExpression(SyntaxKind.NumericLiteralExpression, Literal(line)))));
 
         private static ExpressionStatementSyntax EnterCall(string name, int line, string kind, ExpressionSyntax? receiver)
             => ExpressionStatement(Invoke("Enter",
@@ -451,7 +459,7 @@ using System.Text;
 
 internal static class __CLTrace
 {
-    private sealed class Frame { public string Id = ""; public string Name = ""; public string Kind = ""; public string Recv = ""; public Dictionary<string, object?> Vars = new(); public List<string> Order = new(); }
+    private sealed class Frame { public string Id = ""; public string Name = ""; public string Kind = ""; public string Recv = ""; public int Line; public Dictionary<string, object?> Vars = new(); public List<string> Order = new(); }
     private sealed class StaticSlot { public string Owner = ""; public string Name = ""; public string Value = ""; }
 
     private static readonly List<string> _steps = new();
@@ -490,6 +498,7 @@ internal static class __CLTrace
         // instances of the same type stay tellable apart. Value types box on the way
         // in (a fresh identity each call), so their number would be meaningless - skip.
         if (receiver != null && !receiver.GetType().IsValueType) frame.Recv = LabelOf(receiver);
+        frame.Line = line;
         _stack.Add(frame);
         // A call just started: record the fresh frame at its first line so the call
         // stack visibly grows here, before the call's body runs. This is what makes a
@@ -503,6 +512,11 @@ internal static class __CLTrace
     {
         if (_stack.Count > 0) _stack.RemoveAt(_stack.Count - 1);
         if (_stack.Count == 0 && _prev != null) Console.SetOut(_prev);
+    }
+
+    public static void At(int line)
+    {
+        if (_stack.Count > 0) _stack[_stack.Count - 1].Line = line;
     }
 
     public static void Step(int line, params object?[] pairs)
@@ -542,6 +556,7 @@ internal static class __CLTrace
             sb.Append("\"id\":").Append(Str(frame.Id));
             sb.Append(",\"name\":").Append(Str(frame.Name));
             sb.Append(",\"kind\":").Append(Str(frame.Kind));
+            sb.Append(",\"line\":").Append(frame.Line);
             if (frame.Recv.Length > 0) sb.Append(",\"recv\":").Append(Str(frame.Recv));
             sb.Append(",\"vars\":[");
             for (var v = 0; v < frame.Order.Count; v++)

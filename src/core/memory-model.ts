@@ -47,6 +47,9 @@ export interface Frame {
   /** For an instance call, the object it runs on (e.g. "Cart #1"), shown under
    *  the frame name so several instances of one type stay tellable apart. */
   recv?: string;
+  /** The 1-based source line this frame is currently paused on. On a caller
+   *  waiting for a callee, this is its call site (shown as "paused at line N"). */
+  line?: number;
 }
 
 export interface GlobalSlot {

@@ -35,6 +35,11 @@ export class HeapCardsView implements Panel {
   private readonly objs: HTMLElement;
   private readonly arrows: SVGSVGElement;
   private readonly markerId: string;
+  // Arrow paths reused across renders (keyed "from->to"), so a reference that
+  // stays put keeps its path and only its geometry updates - no flicker.
+  private readonly refPaths = new Map<string, SVGElement>();
+  // Bumped each render; the redraw loop stops once its generation is stale.
+  private arrowGen = 0;
 
   constructor(uid: number) {
     this.markerId = `clmv-hp-ah-${uid}`;
@@ -77,28 +82,50 @@ export class HeapCardsView implements Panel {
 
     reconcile(this.objs, (model.heap ?? []).map((o) => ({ ...o })), objNode);
 
-    const draw = () => {
-      (model.heap ?? []).forEach((o) => {
-        const card = this.el.querySelector(`[data-obj="${o.id}"]`);
-        if (card) card.classList.toggle("glow", model.glow === o.id);
-      });
-      this.drawArrows(model.refs);
+    (model.heap ?? []).forEach((o) => {
+      const card = this.el.querySelector(`[data-obj="${o.id}"]`);
+      if (card) card.classList.toggle("glow", model.glow === o.id);
+    });
+
+    // Frames and cards enter/leave over ~300ms; keep the arrows glued to their
+    // moving dots for that whole window instead of drawing once on a stale layout.
+    this.animateArrows(model.refs);
+  }
+
+  private animateArrows(refs: Ref[]): void {
+    const gen = ++this.arrowGen;
+    const start = now();
+    const tick = () => {
+      if (gen !== this.arrowGen) return; // a newer render took over
+      this.drawArrows(refs);
+      if (now() - start < 340) raf(tick);
     };
-    if (typeof window.requestAnimationFrame === "function") {
-      window.requestAnimationFrame(draw);
-    } else {
-      draw();
-    }
+    raf(tick);
   }
 
   private drawArrows(refs: Ref[]): void {
-    this.arrows.querySelectorAll("path.cl-mv-hp-ref").forEach((p) => p.remove());
     const box = this.arrows.getBoundingClientRect();
     if (box.width === 0 && box.height === 0) return;
-    (refs ?? []).forEach((r) => {
+
+    const wanted = new Map<string, Ref>();
+    (refs ?? []).forEach((r) => wanted.set(`${r.from}\u2192${r.to}`, r));
+
+    // Drop paths whose reference is gone.
+    for (const [key, path] of this.refPaths) {
+      if (!wanted.has(key)) {
+        path.remove();
+        this.refPaths.delete(key);
+      }
+    }
+
+    wanted.forEach((r, key) => {
       const from = this.el.querySelector(`[data-dot="${r.from}"]`);
       const to = this.el.querySelector(`[data-obj="${r.to}"]`);
-      if (!from || !to) return;
+      const existing = this.refPaths.get(key);
+      if (!from || !to) {
+        if (existing) { existing.remove(); this.refPaths.delete(key); }
+        return;
+      }
       const a = from.getBoundingClientRect();
       const b = to.getBoundingClientRect();
       const x1 = a.left + a.width / 2 - box.left;
@@ -106,19 +133,32 @@ export class HeapCardsView implements Panel {
       const x2 = b.left - box.left - 2;
       const y2 = b.top + Math.min(b.height / 2, 18) - box.top;
       const dx = Math.max(36, (x2 - x1) * 0.5);
-      const path = svgEl("path", {
-        class: "cl-mv-hp-ref",
-        d: `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`,
-        "marker-end": `url(#${this.markerId})`,
-      });
-      this.arrows.appendChild(path);
-      if (typeof window.requestAnimationFrame === "function") {
-        window.requestAnimationFrame(() => path.classList.add("show"));
+      const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+      if (existing) {
+        existing.setAttribute("d", d);
       } else {
-        path.classList.add("show");
+        const path = svgEl("path", {
+          class: "cl-mv-hp-ref",
+          d,
+          "marker-end": `url(#${this.markerId})`,
+        });
+        this.arrows.appendChild(path);
+        this.refPaths.set(key, path);
+        raf(() => path.classList.add("show"));
       }
     });
   }
+}
+
+function raf(fn: () => void): void {
+  if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(fn);
+  else fn();
+}
+
+function now(): number {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
 }
 
 function staticsHtml(globals: GlobalSlot[], rodata: GlobalSlot[]): string {
@@ -166,10 +206,16 @@ function frameNode(f: FrameVM, existing?: HTMLElement): HTMLElement {
   const label = kindLabel(f.kind);
   const badge = label ? `<span class="cl-mv-hp-fkind">${esc(label)}</span>` : "";
   const recv = f.recv ? `<div class="cl-mv-hp-frecv">on ${esc(f.recv)}</div>` : "";
+  // A caller is paused on the line that made the call; the active frame's line is
+  // already lit in the editor, so only callers show it here.
+  const paused = !f.active && typeof f.line === "number"
+    ? `<div class="cl-mv-hp-fpaused">paused at line ${f.line}</div>`
+    : "";
   const rows = (f.vars ?? []).map(rowHtml).join("");
   el.innerHTML =
     `<div class="cl-mv-hp-fname"><span class="cl-mv-hp-fn">${esc(f.name ?? f.id)}</span>${badge}</div>` +
     recv +
+    paused +
     `<div class="cl-mv-hp-rows">${rows}</div>`;
   return el;
 }

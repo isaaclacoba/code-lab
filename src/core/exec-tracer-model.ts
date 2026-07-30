@@ -34,6 +34,9 @@ export interface TraceFrame {
   /** For an instance call, the object it runs on, e.g. "Cart #1" - a hint so
    *  several instances of one type stay tellable apart. Absent for static calls. */
   recv?: string;
+  /** The 1-based source line this frame is currently paused on. For a caller
+   *  waiting on a callee, this is its call site. */
+  line?: number;
   vars: TraceVar[];
 }
 
@@ -173,6 +176,7 @@ function frameToFrame(
   const frame: Frame = { id: f.id, name: f.name, vars };
   if (f.kind) frame.kind = f.kind;
   if (f.recv) frame.recv = f.recv;
+  if (typeof f.line === "number") frame.line = f.line;
   return frame;
 }
 

@@ -1059,6 +1059,7 @@
 .cl-mv .cl-mv-hp-fkind { font-size: calc(var(--mv-fs) * 10px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--mv-name-ink, #475569); background: var(--mv-cool-bg, #f7faff); border: 1px solid var(--mv-cool-line, #d7e3ff); border-radius: 999px; padding: 1px 7px; white-space: nowrap; }
 .cl-mv .cl-mv-hp-frame.is-active .cl-mv-hp-fkind { color: var(--mv-hot-ink, #b45309); background: var(--mv-hot-bg, #fff7ea); border-color: var(--mv-hot-line, #f59e0b); }
 .cl-mv .cl-mv-hp-frecv { font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 12px); color: var(--mv-name-ink, #475569); margin: -2px 0 6px; }
+.cl-mv .cl-mv-hp-fpaused { font-size: calc(var(--mv-fs) * 11px); color: var(--mv-name-ink, #475569); font-style: italic; margin: -2px 0 6px; }
 .cl-mv .cl-mv-hp-rows { display: flex; flex-direction: column; gap: 4px; }
 .cl-mv .cl-mv-hp-row { display: grid; grid-template-columns: minmax(6ch, 44%) 1fr; align-items: center; gap: 10px; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 14px); background: var(--mv-surface, #fff); border: 1px solid var(--mv-cool-line, #d7e3ff); border-radius: 6px; padding: 3px 8px; }
 .cl-mv .cl-mv-hp-name { color: var(--mv-name-ink, #475569); }

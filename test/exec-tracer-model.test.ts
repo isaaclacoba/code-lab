@@ -151,8 +151,8 @@ test("a frame carries its call kind and instance receiver through", () => {
       {
         line: 1,
         frames: [
-          { id: "f1", name: "Main", kind: "entry", vars: [] },
-          { id: "f2", name: "Total", kind: "method", recv: "Cart #1", vars: [] },
+          { id: "f1", name: "Main", kind: "entry", line: 36, vars: [] },
+          { id: "f2", name: "Total", kind: "method", recv: "Cart #1", line: 14, vars: [] },
         ],
       },
     ],
@@ -160,8 +160,10 @@ test("a frame carries its call kind and instance receiver through", () => {
   const stack = traceToSteps(trace)[0].stack!;
   assert.equal(stack[0].kind, "entry");
   assert.equal(stack[0].recv, undefined); // no receiver on a static entry point
+  assert.equal(stack[0].line, 36); // the caller's call-site line comes through
   assert.equal(stack[1].kind, "method");
   assert.equal(stack[1].recv, "Cart #1");
+  assert.equal(stack[1].line, 14);
 });
 
 test("a heap object carries its per-type instance number through", () => {
