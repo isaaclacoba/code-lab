@@ -29,6 +29,7 @@ import { VarTableView } from "./vartable-view.js";
 import { CallStackView } from "./callstack-view.js";
 import { HeapCardsView } from "./heapcards-view.js";
 import { NarrationView } from "./narration-view.js";
+import { ConsoleView } from "./console-view.js";
 import { AgentView } from "./agent-view.js";
 import { AgentLoopView } from "./agent-loop-view.js";
 import { MemoryShelfView } from "./memory-shelf-view.js";
@@ -89,6 +90,7 @@ export class MemoryViz {
     callstack: () => new CallStackView(),
     heapcards: (_spec, ctx) => new HeapCardsView(ctx.uid),
     narration: () => new NarrationView(),
+    console: () => new ConsoleView(),
     agent: (spec) => new AgentView(spec.fan),
     agentloop: () => new AgentLoopView(),
     memoryshelf: () => new MemoryShelfView(),

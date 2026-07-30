@@ -521,6 +521,15 @@
 .cl-mv .cl-mv-narr-body li { margin: 0.2em 0; }
 .cl-mv .cl-mv-narr-body code { font-family: var(--cl-mono); font-size: 0.9em; background: rgba(31, 111, 95, 0.1); padding: 0 4px; border-radius: 4px; }
 .cl-mv .cl-mv-stepno { display: block; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 12px); color: var(--mv-accent-ink, var(--mv-heap)); letter-spacing: 0.1em; margin-bottom: 4px; }
+/* Console output panel: a small terminal that shows what the program has
+   printed so far, with the line printed this step highlighted. It is an
+   intentionally dark 'device' surface, so it reads on any theme without a
+   per-theme override (same reasoning as the RAM die / board). */
+.cl-mv .cl-mv-console { background: #141a20; border: 1px solid #2b333c; border-radius: 10px; padding: 10px 12px; }
+.cl-mv .cl-mv-console-head { font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 11.5px); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; color: #8b98a5; margin-bottom: 6px; }
+.cl-mv .cl-mv-console-body { margin: 0; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); line-height: 1.55; color: #e6edf3; white-space: pre-wrap; overflow-wrap: anywhere; min-height: calc(var(--mv-fs) * 22px); max-height: calc(var(--mv-fs) * 150px); overflow: auto; }
+.cl-mv .cl-mv-console-idle { color: #6b7683; font-style: italic; }
+.cl-mv .cl-mv-console-new { color: #7ee7b6; background: rgba(126, 231, 182, 0.14); border-radius: 3px; padding: 0 2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .cl-mv .cl-mv-controls { display: flex; align-items: center; gap: 8px; margin-top: 0; flex-wrap: wrap; }
 .cl-mv .cl-mv-controls button { font: inherit; font-weight: 600; font-size: calc(var(--mv-fs) * 15px); cursor: pointer; border: 1px solid var(--mv-line); background: var(--mv-btn-bg, #fff); color: var(--mv-ink); padding: 9px 16px; border-radius: 10px; transition: background 0.15s, border-color 0.15s; }
 .cl-mv .cl-mv-controls button:hover:not(:disabled) { border-color: var(--mv-btn-hover-line, #cfccc1); background: var(--mv-btn-hover-bg, #fbfbf8); }

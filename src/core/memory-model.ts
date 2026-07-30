@@ -161,6 +161,11 @@ export interface Step {
    *  hand-authored scenes omit it, and panels that do not render output ignore
    *  it. */
   printed?: string;
+  /** Cumulative console output up to and including this step, so a `console`
+   *  panel can show the whole transcript at any step (including after a back or
+   *  seek) without accumulating state itself; the freshly printed tail equals
+   *  `printed`. Set by the generated-trace adapter. */
+  output?: string;
 }
 
 /** An interactive verb: transforms the live model and returns the next one. */
@@ -205,7 +210,7 @@ export const FULL_REGIONS: RegionName[] = ["code", "rodata", "data", "bss", "hea
 /** A composable panel a lesson can place in the layout. New panel types (bits,
  *  pipeline, network, a code editor merged from CodeLab, ...) extend this union
  *  and get a factory in the facade; existing panels are untouched (open/closed). */
-export type PanelType = "board" | "die" | "code" | "vartable" | "callstack" | "heapcards" | "narration" | "controls" | "agent" | "agentloop" | "memoryshelf" | "toolrack" | "transcript" | "retrieval" | "planboard";
+export type PanelType = "board" | "die" | "code" | "vartable" | "callstack" | "heapcards" | "narration" | "controls" | "console" | "agent" | "agentloop" | "memoryshelf" | "toolrack" | "transcript" | "retrieval" | "planboard";
 
 export interface PanelSpec {
   type: PanelType;

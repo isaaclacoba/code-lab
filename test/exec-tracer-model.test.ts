@@ -116,6 +116,13 @@ test("incremental printed output is the delta of cumulative stdout", () => {
   assert.equal(steps[0].printed, undefined);
   assert.equal(steps[1].printed, "hello\n");
   assert.equal(steps[2].printed, "world\n");
+  // Cumulative output rides along for the console panel: full transcript per step.
+  assert.equal(steps[0].output, undefined);
+  assert.equal(steps[1].output, "hello\n");
+  assert.equal(steps[2].output, "hello\nworld\n");
+  // The appended terminal snapshot keeps the whole transcript (nothing new).
+  assert.equal(steps[3].output, "hello\nworld\n");
+  assert.equal(steps[3].printed, undefined);
 });
 
 test("every real step narrates its own line; a terminal step says finished", () => {

@@ -190,11 +190,13 @@ export class VizLab {
   }
 
   /** The one layout: the memory view (call stack + heap objects) in the wide
-   *  column, narration and controls in the reading rail. */
+   *  column, then narration, the console output, and the transport controls in
+   *  the reading rail. The console sits right under the narration so "this line
+   *  runs" and "this is what it printed" read together. */
   private memoryLayout(): VizLayout {
     return {
       visual: [{ type: "heapcards" }] as PanelSpec[],
-      aside: [{ type: "narration" }, { type: "controls" }] as PanelSpec[],
+      aside: [{ type: "narration" }, { type: "console" }, { type: "controls" }] as PanelSpec[],
     };
   }
 

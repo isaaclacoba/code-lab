@@ -116,6 +116,7 @@ export function traceToSteps(trace: ExecTrace): Step[] {
     if (globals.length) step.globals = globals;
     if (rodata.length) step.rodata = rodata;
     if (printed) step.printed = printed;
+    if (stdout) step.output = stdout;
     out.push(step);
 
     prevValues = values;
@@ -151,6 +152,7 @@ export function traceToSteps(trace: ExecTrace): Step[] {
     };
     if (globals.length) terminal.globals = globals;
     if (rodata.length) terminal.rodata = rodata;
+    if (prevStdout) terminal.output = prevStdout;
     out.push(terminal);
   }
 
