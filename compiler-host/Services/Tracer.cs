@@ -39,14 +39,21 @@ public static class Tracer
 
         var options = new CSharpCompilationOptions(OutputKind.ConsoleApplication, concurrentBuild: false);
 
-        // Analyse the ORIGINAL tree: decide, per statement, which locals are both
-        // in scope and definitely assigned right after it runs. That set is what a
-        // step should show, and computing it up front keeps the rewrite mechanical.
-        var analysis = CSharpCompilation.Create("Analysis", new[] { tree }, references, options);
-        var model = analysis.GetSemanticModel(tree);
-        var plan = BuildPlan(tree, model);
+        // First normalize expression-bodied methods and constructors into block
+        // bodies so the rewriter can step into them and push a call frame - a
+        // learner's `Fake(string v) => _value = v;` becomes `{ _value = v; }`, kept
+        // on the same lines so the reported line numbers still match the source.
+        // Then analyse that normalized tree: decide, per statement, which locals are
+        // both in scope and definitely assigned right after it runs. That set is what
+        // a step should show, and computing it up front keeps the rewrite mechanical.
+        var normalizedRoot = new BodyNormalizer().Visit(tree.GetRoot())!;
+        var normalizedTree = tree.WithRootAndOptions(normalizedRoot, tree.Options);
 
-        var instrumented = new Instrumenter(plan).Visit(tree.GetRoot());
+        var analysis = CSharpCompilation.Create("Analysis", new[] { normalizedTree }, references, options);
+        var model = analysis.GetSemanticModel(normalizedTree);
+        var plan = BuildPlan(normalizedTree, model);
+
+        var instrumented = new Instrumenter(plan).Visit(normalizedTree.GetRoot());
         var runtimeTree = CSharpSyntaxTree.ParseText(RuntimeSource);
         var userTree = CSharpSyntaxTree.ParseText(instrumented.ToFullString());
 
@@ -188,6 +195,61 @@ public static class Tracer
         }
     }
 
+    // ---- normalization: expression bodies -> block bodies ----
+
+    // Turns `T M() => expr;` into `T M() { return expr; }` and `C(..) => expr;`
+    // into `C(..) { expr; }`, preserving every newline so line numbers are stable.
+    // The instrumenter only steps into block bodies, so this is what lets a trace
+    // follow a call into a one-line method or constructor.
+    private sealed class BodyNormalizer : CSharpSyntaxRewriter
+    {
+        public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax node)
+        {
+            var visited = (MethodDeclarationSyntax)base.VisitMethodDeclaration(node)!;
+            if (visited.ExpressionBody is null || visited.Body is not null) return visited;
+            var isVoid = visited.ReturnType is PredefinedTypeSyntax pt
+                && pt.Keyword.IsKind(SyntaxKind.VoidKeyword);
+            var block = BlockFromArrow(visited.ExpressionBody, visited.SemicolonToken, isVoid);
+            return visited.WithExpressionBody(null).WithSemicolonToken(default).WithBody(block);
+        }
+
+        public override SyntaxNode? VisitConstructorDeclaration(ConstructorDeclarationSyntax node)
+        {
+            var visited = (ConstructorDeclarationSyntax)base.VisitConstructorDeclaration(node)!;
+            if (visited.ExpressionBody is null || visited.Body is not null) return visited;
+            var block = BlockFromArrow(visited.ExpressionBody, visited.SemicolonToken, isVoid: true);
+            return visited.WithExpressionBody(null).WithSemicolonToken(default).WithBody(block);
+        }
+
+        private static BlockSyntax BlockFromArrow(ArrowExpressionClauseSyntax arrow, SyntaxToken semicolon, bool isVoid)
+        {
+            var expr = arrow.Expression;
+            StatementSyntax inner;
+            if (expr is ThrowExpressionSyntax te)
+                inner = ThrowStatement(te.ThrowKeyword, te.Expression, Token(SyntaxKind.SemicolonToken));
+            else if (isVoid)
+                inner = ExpressionStatement(expr).WithSemicolonToken(Token(SyntaxKind.SemicolonToken));
+            else
+                inner = ReturnStatement(
+                    Token(SyntaxKind.ReturnKeyword).WithTrailingTrivia(Space),
+                    expr,
+                    Token(SyntaxKind.SemicolonToken));
+
+            // Keep every newline the arrow spanned so line numbers do not drift:
+            // the arrow's leading trivia (any newline before =>) goes on the open
+            // brace, its trailing trivia (a space, or the newline when the body sits
+            // on the next line) stays right after the open brace, and the semicolon's
+            // trailing trivia (the newline after ;) goes on the close brace.
+            var open = Token(SyntaxKind.OpenBraceToken)
+                .WithLeadingTrivia(arrow.ArrowToken.LeadingTrivia)
+                .WithTrailingTrivia(arrow.ArrowToken.TrailingTrivia);
+            var close = Token(SyntaxKind.CloseBraceToken)
+                .WithLeadingTrivia(Space)
+                .WithTrailingTrivia(semicolon.TrailingTrivia);
+            return Block(open, SingletonList(inner), close);
+        }
+    }
+
     // ---- the rewriter ----
 
     private sealed class Instrumenter : CSharpSyntaxRewriter
@@ -201,9 +263,23 @@ public static class Tracer
             var rebuilt = new List<StatementSyntax>();
             for (var i = 0; i < node.Statements.Count; i++)
             {
-                rebuilt.Add(visited.Statements[i]);
                 if (_plan.TryGetValue(node.Statements[i], out var info))
-                    rebuilt.Add(StepCall(info));
+                {
+                    if (Exits(node.Statements[i]))
+                    {
+                        rebuilt.Add(StepCall(info)); // snapshot before control leaves the block
+                        rebuilt.Add(visited.Statements[i]);
+                    }
+                    else
+                    {
+                        rebuilt.Add(visited.Statements[i]);
+                        rebuilt.Add(StepCall(info));
+                    }
+                }
+                else
+                {
+                    rebuilt.Add(visited.Statements[i]);
+                }
             }
             return visited.WithStatements(List(rebuilt));
         }
@@ -219,6 +295,18 @@ public static class Tracer
             if (isMain) pre.Add(HookCall("Begin"));
             pre.Add(HookCall("Enter", Literal(name)));
 
+            var body = TryFinally(visited.Body.Statements, pre);
+            return visited.WithBody(body);
+        }
+
+        public override SyntaxNode? VisitConstructorDeclaration(ConstructorDeclarationSyntax node)
+        {
+            var visited = (ConstructorDeclarationSyntax)base.VisitConstructorDeclaration(node)!;
+            if (visited.Body is null) return visited;
+
+            // A constructor is a call too: push a "new Type" frame so a `new Fake(...)`
+            // in Main shows the object being built, then unwinds.
+            var pre = new List<StatementSyntax> { HookCall("Enter", Literal("new " + node.Identifier.Text)) };
             var body = TryFinally(visited.Body.Statements, pre);
             return visited.WithBody(body);
         }
@@ -239,15 +327,33 @@ public static class Tracer
 
             for (var i = 0; i < origGlobals.Count; i++)
             {
-                members.Add(globals[i]);
                 if (_plan.TryGetValue(origGlobals[i].Statement, out var info))
-                    members.Add(GlobalStatement(StepCall(info)));
+                {
+                    if (Exits(origGlobals[i].Statement))
+                    {
+                        members.Add(GlobalStatement(StepCall(info)));
+                        members.Add(globals[i]);
+                    }
+                    else
+                    {
+                        members.Add(globals[i]);
+                        members.Add(GlobalStatement(StepCall(info)));
+                    }
+                }
+                else
+                {
+                    members.Add(globals[i]);
+                }
             }
             members.Add(GlobalStatement(HookCall("Leave")));
 
             var others = visited.Members.Where(m => m is not GlobalStatementSyntax);
             return visited.WithMembers(List(members.Concat(others)));
         }
+
+        private static bool Exits(StatementSyntax stmt) => stmt is ReturnStatementSyntax
+            or ThrowStatementSyntax or BreakStatementSyntax or ContinueStatementSyntax
+            or GotoStatementSyntax or YieldStatementSyntax;
 
         private static BlockSyntax TryFinally(SyntaxList<StatementSyntax> body, List<StatementSyntax> pre)
         {
@@ -461,8 +567,9 @@ internal static class __CLTrace
             object? v; try { v = p.GetValue(obj); } catch { continue; }
             yield return (p.Name, v);
         }
-        foreach (var fld in t.GetFields(BindingFlags.Public | BindingFlags.Instance))
+        foreach (var fld in t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
         {
+            if (fld.Name.Length > 0 && fld.Name[0] == '<') continue; // compiler-generated auto-property backing field
             object? v; try { v = fld.GetValue(obj); } catch { continue; }
             yield return (fld.Name, v);
         }

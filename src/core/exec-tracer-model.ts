@@ -83,7 +83,7 @@ export function traceToSteps(trace: ExecTrace): Step[] {
     const printed = stdout.startsWith(prevStdout) ? stdout.slice(prevStdout.length) : stdout;
 
     const step: Step = {
-      narr: narrationFor(ts.line, src, i, steps.length),
+      narr: runningNarration(ts.line, src),
       pc: typeof ts.line === "number" && ts.line > 0 ? ts.line - 1 : -1,
       codeLive: true,
       stack,
@@ -96,6 +96,31 @@ export function traceToSteps(trace: ExecTrace): Step[] {
     prevFields = fields;
     prevStdout = stdout;
   });
+
+  // A final snapshot that repeats the end state and says the program is done, so
+  // the last real statement keeps its own narration instead of being relabelled
+  // (a call on the last line was otherwise never shown). Nothing is hot here and
+  // no new output is printed - it is the same picture, one beat later.
+  const lastTs = steps[steps.length - 1];
+  if (lastTs) {
+    const values = new Map<string, string>();
+    const stack: Frame[] = (lastTs.frames ?? []).map((f) =>
+      frameToFrame(f, values, prevValues, false),
+    );
+    const fields = new Map<string, string>();
+    const heap: HeapObject[] = (lastTs.heap ?? []).map((o) =>
+      objectToObject(o, fields, prevFields, false),
+    );
+    out.push({
+      narr: trace.truncated
+        ? "Stopped early - there were too many steps to show the rest."
+        : "The program has finished.",
+      pc: -1,
+      codeLive: true,
+      stack,
+      heap,
+    });
+  }
 
   return out;
 }
@@ -141,9 +166,9 @@ function refDisplay(v: TraceVar): string {
 }
 
 /** A plain, honest narration for a generated step: the source line being run.
- *  No fabricated teaching prose - the code is the story here. */
-function narrationFor(line: number, src: string[], i: number, total: number): string {
-  if (i === total - 1) return "The program has finished.";
+ *  No fabricated teaching prose - the code is the story here. The terminal
+ *  "finished" step is added by the caller, so every real step narrates its line. */
+function runningNarration(line: number, src: string[]): string {
   const text = typeof line === "number" && line > 0 ? (src[line - 1] ?? "").trim() : "";
   if (!text) return "Running the program.";
   return "Running this line: `" + text + "`";

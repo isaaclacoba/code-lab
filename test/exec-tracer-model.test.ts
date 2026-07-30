@@ -15,9 +15,11 @@ test("maps line to a 0-based pc and keeps the source", () => {
     steps: [{ line: 1, frames: [frame([["a", "1"]])] }],
   };
   const steps = traceToSteps(trace);
-  assert.equal(steps.length, 1);
+  assert.equal(steps.length, 2); // the one statement, plus a terminal "finished" step
   assert.equal(steps[0].pc, 0);
   assert.equal(steps[0].codeLive, true);
+  assert.equal(steps[1].narr, "The program has finished.");
+  assert.equal(steps[1].pc, -1); // no line highlighted once the program is done
 });
 
 test("value locals become value slots with stable ids", () => {
@@ -116,7 +118,7 @@ test("incremental printed output is the delta of cumulative stdout", () => {
   assert.equal(steps[2].printed, "world\n");
 });
 
-test("the last step narrates as finished; others narrate the source line", () => {
+test("every real step narrates its own line; a terminal step says finished", () => {
   const trace: ExecTrace = {
     code: CODE,
     steps: [
@@ -125,8 +127,21 @@ test("the last step narrates as finished; others narrate the source line", () =>
     ],
   };
   const steps = traceToSteps(trace);
+  assert.equal(steps.length, 3); // two statements, plus the terminal step
   assert.match(steps[0].narr, /int t = a \+ b;/);
-  assert.equal(steps[1].narr, "The program has finished.");
+  assert.match(steps[1].narr, /Console\.WriteLine\(t\);/); // the last line keeps its narration
+  assert.equal(steps[2].narr, "The program has finished.");
+  assert.equal(steps[2].pc, -1);
+});
+
+test("a truncated trace ends with a stopped-early note, not finished", () => {
+  const trace: ExecTrace = {
+    code: CODE,
+    steps: [{ line: 1, frames: [frame([["a", "1"]])] }],
+    truncated: true,
+  };
+  const steps = traceToSteps(trace);
+  assert.match(steps[steps.length - 1].narr, /Stopped early/);
 });
 
 test("an empty trace yields no steps", () => {
