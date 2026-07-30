@@ -424,11 +424,13 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 internal static class __CLTrace
 {
     private sealed class Frame { public string Id = ""; public string Name = ""; public Dictionary<string, object?> Vars = new(); public List<string> Order = new(); }
+    private sealed class StaticSlot { public string Owner = ""; public string Name = ""; public string Value = ""; }
 
     private static readonly List<string> _steps = new();
     private static readonly List<Frame> _stack = new();
@@ -526,9 +528,122 @@ internal static class __CLTrace
         }
         sb.Append(']');
 
+        var statics = new List<StaticSlot>();
+        var consts = new List<StaticSlot>();
+        CollectStaticFields(statics, consts);
+        AppendStaticSlots(sb, "statics", statics);
+        AppendStaticSlots(sb, "consts", consts);
+
         sb.Append(",\"stdout\":").Append(Str(_out.ToString()));
         sb.Append('}');
         return sb.ToString();
+    }
+
+    private static void CollectStaticFields(List<StaticSlot> statics, List<StaticSlot> consts)
+    {
+        Type[] types;
+        try
+        {
+            types = typeof(__CLTrace).Assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            var loaded = new List<Type>();
+            foreach (var t in ex.Types) if (t != null) loaded.Add(t);
+            types = loaded.ToArray();
+        }
+        catch
+        {
+            return;
+        }
+
+        foreach (var type in types)
+        {
+            try { if (SkipStaticType(type)) continue; }
+            catch { continue; }
+
+            FieldInfo[] fields;
+            try
+            {
+                fields = type.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+            }
+            catch
+            {
+                continue;
+            }
+
+            foreach (var field in fields)
+            {
+                try { if (SkipStaticField(type, field)) continue; }
+                catch { continue; }
+
+                try
+                {
+                    if (field.IsLiteral && !field.IsInitOnly)
+                    {
+                        consts.Add(StaticSlotFor(field, field.GetRawConstantValue()));
+                    }
+                    else if (field.IsStatic && !field.IsLiteral)
+                    {
+                        statics.Add(StaticSlotFor(field, field.GetValue(null)));
+                    }
+                }
+                catch
+                {
+                    // A field read can run user static initialization. Never let that
+                    // break tracing; skip the field and keep the snapshot usable.
+                }
+            }
+        }
+
+        SortStaticSlots(statics);
+        SortStaticSlots(consts);
+    }
+
+    private static bool SkipStaticType(Type type)
+    {
+        if (type == typeof(__CLTrace) || type.DeclaringType == typeof(__CLTrace)) return true;
+        var name = type.FullName ?? type.Name;
+        if (name.Contains("<PrivateImplementationDetails>", StringComparison.Ordinal)) return true;
+        if (type.Name.Contains("<", StringComparison.Ordinal)) return true;
+        return type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false);
+    }
+
+    private static bool SkipStaticField(Type owner, FieldInfo field)
+    {
+        if (field.Name.Contains("<", StringComparison.Ordinal)) return true;
+        if (field.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)) return true;
+        return owner.IsEnum && (field.Name == "value__" || field.IsSpecialName);
+    }
+
+    private static StaticSlot StaticSlotFor(FieldInfo field, object? value)
+    {
+        var owner = field.DeclaringType is null ? "" : TypeName(field.DeclaringType);
+        return new StaticSlot { Owner = owner, Name = field.Name, Value = StaticValueText(value) };
+    }
+
+    private static void SortStaticSlots(List<StaticSlot> slots)
+    {
+        slots.Sort((a, b) =>
+        {
+            var owner = string.Compare(a.Owner, b.Owner, StringComparison.Ordinal);
+            return owner != 0 ? owner : string.Compare(a.Name, b.Name, StringComparison.Ordinal);
+        });
+    }
+
+    private static void AppendStaticSlots(StringBuilder sb, string property, List<StaticSlot> slots)
+    {
+        sb.Append(",\"").Append(property).Append("\":[");
+        for (var i = 0; i < slots.Count; i++)
+        {
+            if (i > 0) sb.Append(',');
+            var slot = slots[i];
+            sb.Append("{\"owner\":").Append(Str(slot.Owner));
+            sb.Append(",\"name\":").Append(Str(slot.Name));
+            sb.Append(",\"value\":").Append(Str(slot.Value));
+            sb.Append('}');
+        }
+        sb.Append(']');
     }
 
     private static void AppendValue(StringBuilder sb, object? val, List<string> heap, HashSet<object> seen)
@@ -580,6 +695,19 @@ internal static class __CLTrace
         if (v is null) return "null";
         if (IsInline(v, out var text)) return text;
         return TypeName(v.GetType());
+    }
+
+    private static string StaticValueText(object? v)
+    {
+        if (v is null) return "null";
+        if (v is string s) return s;
+        var t = v.GetType();
+        if (t.IsEnum) return v.ToString() ?? "";
+        if (t.IsPrimitive) return Convert.ToString(v, CultureInfo.InvariantCulture) ?? "";
+        if (v is decimal dec) return dec.ToString(CultureInfo.InvariantCulture);
+        if (!t.IsValueType) return TypeName(t);
+        if (v is IFormattable formattable) return formattable.ToString(null, CultureInfo.InvariantCulture) ?? "";
+        return v.ToString() ?? "";
     }
 
     private static bool IsInline(object v, out string text)

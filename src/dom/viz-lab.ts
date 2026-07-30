@@ -22,9 +22,10 @@ function normalizeErrors(
 }
 
 /** How much of the memory model to reveal. Maps to a MemoryViz panel:
- *  values -> a flat variable table (level 0), callstack -> stacked call frames
- *  (level 1), heap -> frames + heap objects joined by reference arrows (level 2). */
-export type VizLevel = "values" | "callstack" | "heap";
+ *  memory -> call frames + heap objects together, values -> a flat variable table. */
+export type VizLevel = "values" | "memory";
+
+type LegacyVizLevel = VizLevel | "callstack" | "heap";
 
 export interface VizLabConfig {
   /** URL of the compiler host that implements the trace wire (same-origin).
@@ -32,8 +33,8 @@ export interface VizLabConfig {
   runnerUrl: string;
   /** Code shown in the editor on first load. */
   starter?: string;
-  /** Which level of detail to render first. Default "heap" (the richest). */
-  level?: VizLevel;
+  /** Which level of detail to render first. Default "memory". */
+  level?: LegacyVizLevel;
   /** Editor language id for Monaco. Default "csharp". */
   language?: string;
   /** Legend swatches passed through to the visualiser controls. */
@@ -43,9 +44,8 @@ export interface VizLabConfig {
 }
 
 const LEVELS: { id: VizLevel; label: string; panel: PanelType }[] = [
-  { id: "values", label: "Values", panel: "vartable" },
-  { id: "callstack", label: "Call stack", panel: "callstack" },
-  { id: "heap", label: "Heap", panel: "heapcards" },
+  { id: "memory", label: "Memory", panel: "heapcards" },
+  { id: "values", label: "Simple values", panel: "vartable" },
 ];
 
 const DEFAULT_STARTER = [
@@ -60,6 +60,10 @@ const DEFAULT_STARTER = [
   "    }",
   "}",
 ].join("\n");
+
+function normalizeLevel(level: LegacyVizLevel): VizLevel {
+  return level === "values" ? "values" : "memory";
+}
 
 /** The "Visualize my code" surface: a Monaco editor whose C# is traced by the
  *  real compiler host, then animated by the same MemoryViz renderer the
@@ -86,7 +90,7 @@ export class VizLab {
   private ready = false;
 
   private constructor(host: HTMLElement, config: VizLabConfig) {
-    this.level = config.level ?? "heap";
+    this.level = normalizeLevel(config.level ?? "memory");
     this.legend = config.legend;
     this.language = config.language ?? "csharp";
     this.runner = new IframeRunner({

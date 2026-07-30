@@ -8,6 +8,7 @@ export class CodePanel implements Panel {
   readonly el: HTMLElement;
   private readonly list: HTMLElement;
   private readonly code: string[];
+  private lastPc = -1;
 
   constructor(code: string[]) {
     this.code = code;
@@ -25,6 +26,7 @@ export class CodePanel implements Panel {
   sync(ctx: SyncCtx): void {
     const lines = ctx.model.code ?? this.code;
     const pc = ctx.model.pc ?? -1;
+    const pcChanged = pc !== this.lastPc;
     this.el.classList.toggle("dimmed", !ctx.model.codeLive);
     if (this.list.children.length !== lines.length) {
       this.list.innerHTML = "";
@@ -35,5 +37,26 @@ export class CodePanel implements Panel {
       li.innerHTML = markedLineHtml(line, spansForLine(i, line, ctx.model.codeMark, pc));
       li.classList.toggle("pc", i === pc);
     });
+    this.lastPc = pc;
+    if (pc >= 0 && pcChanged) this.scrollPcIntoView(pc);
+  }
+
+  private scrollPcIntoView(pc: number): void {
+    const activeLi = this.list.children.item(pc);
+    if (!activeLi || typeof activeLi.scrollIntoView !== "function") return;
+    let reducedMotion = false;
+    try {
+      reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    } catch {
+      reducedMotion = false;
+    }
+    try {
+      activeLi.scrollIntoView({
+        block: "nearest",
+        inline: "nearest",
+        behavior: reducedMotion ? "auto" : "smooth",
+      });
+    } catch {
+    }
   }
 }

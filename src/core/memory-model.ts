@@ -47,6 +47,7 @@ export interface GlobalSlot {
   id: string;
   k: string;
   v: string;
+  hot?: boolean;
 }
 
 export interface HeapObject {

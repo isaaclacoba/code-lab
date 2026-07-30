@@ -10,7 +10,7 @@
 // diffs each step against the one before it and marks changed/created slots and
 // heap fields hot, and computes the incremental (delta) console output.
 
-import type { Frame, HeapObject, Slot, Step } from "./memory-model.js";
+import type { Frame, GlobalSlot, HeapObject, Slot, Step } from "./memory-model.js";
 
 /** One local (or parameter) in a frame. A value type carries `value`; a
  *  reference type carries `ref` (the id of a heap object) - never both. A
@@ -39,6 +39,12 @@ export interface TraceObject {
   fields: Array<[string, string]>;
 }
 
+export interface TraceStatic {
+  owner?: string;
+  name: string;
+  value: string;
+}
+
 /** One executed statement: the line about to run (1-based), the stack, the live
  *  heap, and the cumulative stdout so far. Cumulative (not incremental) stdout
  *  keeps the tracer trivial; the adapter derives the per-step delta. */
@@ -46,6 +52,8 @@ export interface TraceStep {
   line: number;
   frames: TraceFrame[];
   heap?: TraceObject[];
+  statics?: TraceStatic[];
+  consts?: TraceStatic[];
   stdout?: string;
 }
 
@@ -66,6 +74,7 @@ export function traceToSteps(trace: ExecTrace): Step[] {
   const out: Step[] = [];
   let prevValues = new Map<string, string>();
   let prevFields = new Map<string, string>();
+  let prevGlobals = new Map<string, string>();
   let prevStdout = "";
 
   steps.forEach((ts, i) => {
@@ -78,6 +87,9 @@ export function traceToSteps(trace: ExecTrace): Step[] {
     const heap: HeapObject[] = (ts.heap ?? []).map((o) =>
       objectToObject(o, fields, prevFields, i === 0),
     );
+    const globalValues = new Map<string, string>();
+    const globals = globalSlots(ts.statics ?? [], globalValues, prevGlobals, i === 0);
+    const rodata = globalSlots(ts.consts ?? []);
 
     const stdout = ts.stdout ?? "";
     const printed = stdout.startsWith(prevStdout) ? stdout.slice(prevStdout.length) : stdout;
@@ -89,11 +101,14 @@ export function traceToSteps(trace: ExecTrace): Step[] {
       stack,
       heap,
     };
+    if (globals.length) step.globals = globals;
+    if (rodata.length) step.rodata = rodata;
     if (printed) step.printed = printed;
     out.push(step);
 
     prevValues = values;
     prevFields = fields;
+    prevGlobals = globalValues;
     prevStdout = stdout;
   });
 
@@ -111,7 +126,9 @@ export function traceToSteps(trace: ExecTrace): Step[] {
     const heap: HeapObject[] = (lastTs.heap ?? []).map((o) =>
       objectToObject(o, fields, prevFields, false),
     );
-    out.push({
+    const globals = globalSlots(lastTs.statics ?? [], new Map<string, string>(), prevGlobals, false);
+    const rodata = globalSlots(lastTs.consts ?? []);
+    const terminal: Step = {
       narr: trace.truncated
         ? "Stopped early - there were too many steps to show the rest."
         : "The program has finished.",
@@ -119,7 +136,10 @@ export function traceToSteps(trace: ExecTrace): Step[] {
       codeLive: true,
       stack,
       heap,
-    });
+    };
+    if (globals.length) terminal.globals = globals;
+    if (rodata.length) terminal.rodata = rodata;
+    out.push(terminal);
   }
 
   return out;
@@ -157,6 +177,27 @@ function objectToObject(
     if (!firstStep && prevFields.get(key) !== value) hotFields.push(name);
   });
   return { id: o.id, type: o.type, fields: o.fields ?? [], hotFields };
+}
+
+function globalSlots(
+  globals: TraceStatic[],
+  values?: Map<string, string>,
+  prevValues?: Map<string, string>,
+  firstStep = false,
+): GlobalSlot[] {
+  return (globals ?? []).map((g) => {
+    const owner = g.owner ?? "";
+    const id = `${owner}.${g.name}`;
+    const v = g.value ?? "";
+    values?.set(id, v);
+    const slot: GlobalSlot = {
+      id,
+      k: owner ? `${owner}.${g.name}` : g.name,
+      v,
+    };
+    if (prevValues && !firstStep && prevValues.get(id) !== v) slot.hot = true;
+    return slot;
+  });
 }
 
 /** A slot that changed is "hot" whether its value or its target changed. For a

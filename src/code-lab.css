@@ -1081,6 +1081,16 @@
 .cl-mv .cl-mv-hp-arrows path.cl-mv-hp-ref.show { opacity: 0.95; }
 .cl-mv .cl-mv-hp-arrows marker path { fill: var(--mv-stack); }
 
+/* Statics / constants band inside the unified MEMORY view: the values that live
+   for the whole program (statics) and the compile-time constants, shown above
+   the stack -> heap picture. Value-only rows reuse the frame-row styling, so a
+   theme that skins the frame rows skins these too. */
+.cl-mv .cl-mv-hp-statics:empty { display: none; }
+.cl-mv .cl-mv-hp-statics { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 18px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px dashed var(--mv-line); }
+.cl-mv .cl-mv-hp-sgroup { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cl-mv .cl-mv-hp-sgroup .cl-mv-tag { margin-bottom: 2px; font-size: calc(var(--mv-fs) * 11px); }
+.cl-mv .cl-mv-hp-srows { display: flex; flex-direction: column; gap: 4px; }
+
 /* ------------------------------------------------------- VizLab (visualize) */
 /* The "Visualize my code" surface: a Monaco editor stacked over the MemoryViz
    renderer it drives. Stacked (not side by side) because MemoryViz is itself a
@@ -1097,3 +1107,10 @@
 .cl-vl-monaco { min-height: 240px; border: 1px solid var(--cl-line); border-radius: var(--cl-radius); overflow: hidden; }
 .cl-vl-stage { min-height: 120px; }
 .cl-vl-hint { margin: 0; padding: 1.4rem; text-align: center; color: var(--cl-ink-soft); border: 1px dashed var(--cl-line); border-radius: var(--cl-radius); }
+/* On the Visualize surface only: keep the narration and the transport controls
+   together at the top of the aside (no dead gap on a tall left column), and give
+   the code panel its own scroll so a long program keeps the running line in view
+   (the code panel auto-scrolls the active line into this box). */
+.cl-vl-stage .cl-mv .cl-mv-aside { grid-template-rows: none; grid-auto-rows: max-content; align-content: start; }
+.cl-vl-stage .cl-mv .cl-mv-aside > .cl-mv-narr { align-self: start; }
+.cl-vl-stage .cl-mv .cl-mv-codepanel ol { max-height: 48vh; overflow: auto; overscroll-behavior: contain; }

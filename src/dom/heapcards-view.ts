@@ -9,6 +9,7 @@
 import type { Panel, SyncCtx } from "./panel.js";
 import type {
   Frame,
+  GlobalSlot,
   HeapObject,
   Ref,
   ResolvedModel,
@@ -19,6 +20,7 @@ import { svgEl } from "./svg.js";
 
 export class HeapCardsView implements Panel {
   readonly el: HTMLElement;
+  private readonly statics: HTMLElement;
   private readonly roots: HTMLElement;
   private readonly objs: HTMLElement;
   private readonly arrows: SVGSVGElement;
@@ -30,6 +32,7 @@ export class HeapCardsView implements Panel {
     this.el.className = "cl-mv-region cl-mv-heapcards";
     this.el.innerHTML =
       `<span class="cl-mv-tag">MEMORY <span>\u00b7 names on the left, objects on the right</span></span>` +
+      `<div class="cl-mv-hp-statics" data-hpstatics></div>` +
       `<div class="cl-mv-hp-cols">` +
       `<div class="cl-mv-hp-roots" data-hproots></div>` +
       `<div class="cl-mv-hp-objs" data-hpobjs></div>` +
@@ -38,6 +41,7 @@ export class HeapCardsView implements Panel {
       `<path d="M0,0 L9,4.5 L0,9 z" fill="#2563eb" stroke="none" /></marker>` +
       `</defs></svg>` +
       `</div>`;
+    this.statics = this.el.querySelector("[data-hpstatics]") as HTMLElement;
     this.roots = this.el.querySelector("[data-hproots]") as HTMLElement;
     this.objs = this.el.querySelector("[data-hpobjs]") as HTMLElement;
     this.arrows = this.el.querySelector(".cl-mv-hp-arrows") as SVGSVGElement;
@@ -52,6 +56,7 @@ export class HeapCardsView implements Panel {
   }
 
   private render(model: ResolvedModel): void {
+    this.statics.innerHTML = staticsHtml(model.globals ?? [], model.rodata ?? []);
     this.roots.innerHTML = framesHtml(model.stack ?? []);
     this.objs.innerHTML = (model.heap ?? []).map((o) => objHtml(o, model.glow)).join("");
     if (typeof window.requestAnimationFrame === "function") {
@@ -89,6 +94,33 @@ export class HeapCardsView implements Panel {
       }
     });
   }
+}
+
+function staticsHtml(globals: GlobalSlot[], rodata: GlobalSlot[]): string {
+  return [
+    globals.length ? staticGroupHtml("STATICS", "values shared across the program", globals, true) : "",
+    rodata.length ? staticGroupHtml("CONSTANTS", "fixed at compile time", rodata, false) : "",
+  ].join("");
+}
+
+function staticGroupHtml(title: string, note: string, slots: GlobalSlot[], allowHot: boolean): string {
+  const rows = slots.map((slot) => staticRowHtml(slot, allowHot)).join("");
+  return (
+    `<div class="cl-mv-hp-sgroup">` +
+    `<span class="cl-mv-tag">${esc(title)} <span>&#183; ${esc(note)}</span></span>` +
+    `<div class="cl-mv-hp-srows">${rows}</div>` +
+    `</div>`
+  );
+}
+
+function staticRowHtml(slot: GlobalSlot, allowHot: boolean): string {
+  const hot = allowHot && slot.hot ? " is-changed" : "";
+  return (
+    `<div class="cl-mv-hp-row${hot}">` +
+    `<span class="cl-mv-hp-name">${esc(slot.k)}</span>` +
+    `<span class="cl-mv-hp-val">${esc(slot.v)}</span>` +
+    `</div>`
+  );
 }
 
 // Frames newest-first, so a called function sits above its caller - the active
