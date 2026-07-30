@@ -28,6 +28,12 @@ export interface TraceVar {
 export interface TraceFrame {
   id: string;
   name: string;
+  /** What kind of call this frame is: "entry" (Main), "method" (instance),
+   *  "static" (static method), or "ctor" (a constructor). Drives the badge. */
+  kind?: string;
+  /** For an instance call, the object it runs on, e.g. "Cart #1" - a hint so
+   *  several instances of one type stay tellable apart. Absent for static calls. */
+  recv?: string;
   vars: TraceVar[];
 }
 
@@ -36,6 +42,9 @@ export interface TraceFrame {
 export interface TraceObject {
   id: string;
   type: string;
+  /** A per-type instance number ("Cart #1", "Cart #2") shown on the card so two
+   *  objects of the same type are tellable apart. */
+  no?: number;
   fields: Array<[string, string]>;
 }
 
@@ -161,7 +170,10 @@ function frameToFrame(
     else slot.v = v.value ?? "";
     return slot;
   });
-  return { id: f.id, name: f.name, vars };
+  const frame: Frame = { id: f.id, name: f.name, vars };
+  if (f.kind) frame.kind = f.kind;
+  if (f.recv) frame.recv = f.recv;
+  return frame;
 }
 
 function objectToObject(
@@ -176,7 +188,9 @@ function objectToObject(
     fields.set(key, value);
     if (!firstStep && prevFields.get(key) !== value) hotFields.push(name);
   });
-  return { id: o.id, type: o.type, fields: o.fields ?? [], hotFields };
+  const obj: HeapObject = { id: o.id, type: o.type, fields: o.fields ?? [], hotFields };
+  if (typeof o.no === "number") obj.no = o.no;
+  return obj;
 }
 
 function globalSlots(

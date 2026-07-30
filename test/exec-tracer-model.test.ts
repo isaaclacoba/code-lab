@@ -144,6 +144,45 @@ test("a truncated trace ends with a stopped-early note, not finished", () => {
   assert.match(steps[steps.length - 1].narr, /Stopped early/);
 });
 
+test("a frame carries its call kind and instance receiver through", () => {
+  const trace: ExecTrace = {
+    code: [],
+    steps: [
+      {
+        line: 1,
+        frames: [
+          { id: "f1", name: "Main", kind: "entry", vars: [] },
+          { id: "f2", name: "Total", kind: "method", recv: "Cart #1", vars: [] },
+        ],
+      },
+    ],
+  };
+  const stack = traceToSteps(trace)[0].stack!;
+  assert.equal(stack[0].kind, "entry");
+  assert.equal(stack[0].recv, undefined); // no receiver on a static entry point
+  assert.equal(stack[1].kind, "method");
+  assert.equal(stack[1].recv, "Cart #1");
+});
+
+test("a heap object carries its per-type instance number through", () => {
+  const trace: ExecTrace = {
+    code: [],
+    steps: [
+      {
+        line: 1,
+        frames: [frame([])],
+        heap: [
+          { id: "o1", type: "Clock", no: 1, fields: [["_hour", "9"]] },
+          { id: "o2", type: "Clock", no: 2, fields: [["_hour", "15"]] },
+        ],
+      },
+    ],
+  };
+  const heap = traceToSteps(trace)[0].heap!;
+  assert.equal(heap[0].no, 1);
+  assert.equal(heap[1].no, 2);
+});
+
 test("an empty trace yields no steps", () => {
   assert.deepEqual(traceToSteps({ code: [], steps: [] }), []);
 });

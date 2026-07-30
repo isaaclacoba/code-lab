@@ -5,6 +5,13 @@
 // it points to. It is self-contained: it owns both ends of every arrow (the dot
 // and the card), so no cross-panel geometry is needed - the same approach the
 // hardware die view uses. Value vs reference is taught by one picture.
+//
+// Frames and objects are reconciled by id (not re-created each step) so a call
+// being pushed slides in and a call returning fades out - the call stack visibly
+// grows and shrinks. Each frame names what kind of call it is (entry / instance
+// method / static method / constructor) and, for an instance call, which object
+// it runs on ("on Cart #1"); each object card carries its own "#n" so several
+// instances of one type stay tellable apart.
 
 import type { Panel, SyncCtx } from "./panel.js";
 import type {
@@ -16,7 +23,10 @@ import type {
   Slot,
 } from "../core/memory-model.js";
 import { slotKind } from "../core/memory-model.js";
+import { reconcile } from "./reconcile.js";
 import { svgEl } from "./svg.js";
+
+type FrameVM = Frame & { active: boolean };
 
 export class HeapCardsView implements Panel {
   readonly el: HTMLElement;
@@ -57,12 +67,27 @@ export class HeapCardsView implements Panel {
 
   private render(model: ResolvedModel): void {
     this.statics.innerHTML = staticsHtml(model.globals ?? [], model.rodata ?? []);
-    this.roots.innerHTML = framesHtml(model.stack ?? []);
-    this.objs.innerHTML = (model.heap ?? []).map((o) => objHtml(o, model.glow)).join("");
-    if (typeof window.requestAnimationFrame === "function") {
-      window.requestAnimationFrame(() => this.drawArrows(model.refs));
-    } else {
+
+    // Frames are reconciled in push order (caller first) and shown bottom-up via
+    // column-reverse, so the active call is the top card and a freshly pushed
+    // frame enters at the top. The last frame is the active one.
+    const stack = model.stack ?? [];
+    const frames: FrameVM[] = stack.map((f, i) => ({ ...f, active: i === stack.length - 1 }));
+    reconcile(this.roots, frames, frameNode);
+
+    reconcile(this.objs, (model.heap ?? []).map((o) => ({ ...o })), objNode);
+
+    const draw = () => {
+      (model.heap ?? []).forEach((o) => {
+        const card = this.el.querySelector(`[data-obj="${o.id}"]`);
+        if (card) card.classList.toggle("glow", model.glow === o.id);
+      });
       this.drawArrows(model.refs);
+    };
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(draw);
+    } else {
+      draw();
     }
   }
 
@@ -123,24 +148,30 @@ function staticRowHtml(slot: GlobalSlot, allowHot: boolean): string {
   );
 }
 
-// Frames newest-first, so a called function sits above its caller - the active
-// frame is the top card.
-function framesHtml(stack: Frame[]): string {
-  const frames = [...stack].reverse();
-  return frames
-    .map((frame, i) => {
-      const active = i === 0;
-      const cls = "cl-mv-hp-frame" + (active ? " is-active" : " is-caller");
-      const title = frame.name ?? frame.id;
-      const rows = (frame.vars ?? []).map(rowHtml).join("");
-      return (
-        `<div class="${cls}">` +
-        `<div class="cl-mv-hp-fname">${esc(title)}</div>` +
-        `<div class="cl-mv-hp-rows">${rows}</div>` +
-        `</div>`
-      );
-    })
-    .join("");
+// A plain-language label for the kind of call a frame is, so it reads as what it
+// is rather than just a bare name.
+function kindLabel(kind?: string): string {
+  switch (kind) {
+    case "entry": return "entry point";
+    case "static": return "static method";
+    case "method": return "instance method";
+    case "ctor": return "constructor";
+    default: return "";
+  }
+}
+
+function frameNode(f: FrameVM, existing?: HTMLElement): HTMLElement {
+  const el = existing ?? document.createElement("div");
+  el.className = "cl-mv-hp-frame" + (f.active ? " is-active" : " is-caller");
+  const label = kindLabel(f.kind);
+  const badge = label ? `<span class="cl-mv-hp-fkind">${esc(label)}</span>` : "";
+  const recv = f.recv ? `<div class="cl-mv-hp-frecv">on ${esc(f.recv)}</div>` : "";
+  const rows = (f.vars ?? []).map(rowHtml).join("");
+  el.innerHTML =
+    `<div class="cl-mv-hp-fname"><span class="cl-mv-hp-fn">${esc(f.name ?? f.id)}</span>${badge}</div>` +
+    recv +
+    `<div class="cl-mv-hp-rows">${rows}</div>`;
+  return el;
 }
 
 function rowHtml(v: Slot): string {
@@ -174,9 +205,11 @@ function rowHtml(v: Slot): string {
   );
 }
 
-function objHtml(o: HeapObject, glow?: string): string {
-  const cls =
-    "cl-mv-hp-card" + (o.dim ? " is-dim" : "") + (glow === o.id ? " glow" : "");
+function objNode(o: HeapObject, existing?: HTMLElement): HTMLElement {
+  const el = existing ?? document.createElement("div");
+  el.className = "cl-mv-hp-card" + (o.dim ? " is-dim" : "");
+  el.setAttribute("data-obj", o.id);
+  const no = typeof o.no === "number" ? ` <span class="cl-mv-hp-no">#${o.no}</span>` : "";
   const fields = (o.fields ?? [])
     .map((field) => {
       const isHot = (o.hotFields ?? []).includes(field[0]);
@@ -188,12 +221,9 @@ function objHtml(o: HeapObject, glow?: string): string {
       );
     })
     .join("");
-  return (
-    `<div class="${cls}" data-obj="${esc(o.id)}">` +
-    `<div class="cl-mv-hp-type">${esc(o.type)}</div>` +
-    fields +
-    `</div>`
-  );
+  el.innerHTML =
+    `<div class="cl-mv-hp-type">${esc(o.type)}${no}</div>` + fields;
+  return el;
 }
 
 function esc(s: string): string {

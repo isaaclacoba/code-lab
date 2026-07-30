@@ -291,9 +291,13 @@ public static class Tracer
 
             var name = node.Identifier.Text;
             var isMain = name == "Main";
+            var isStatic = node.Modifiers.Any(SyntaxKind.StaticKeyword);
+            var kind = isMain ? "entry" : isStatic ? "static" : "method";
+            // Only an instance method has a `this` to point at; a static one must not.
+            ExpressionSyntax? receiver = (!isMain && !isStatic) ? ThisExpression() : null;
             var pre = new List<StatementSyntax>();
             if (isMain) pre.Add(HookCall("Begin"));
-            pre.Add(EnterCall(name, FirstBodyLine(node.Body)));
+            pre.Add(EnterCall(name, FirstBodyLine(node.Body), kind, receiver));
 
             var body = TryFinally(visited.Body.Statements, pre);
             return visited.WithBody(body);
@@ -306,7 +310,7 @@ public static class Tracer
 
             // A constructor is a call too: push a "new Type" frame so a `new Fake(...)`
             // in Main shows the object being built, then unwinds.
-            var pre = new List<StatementSyntax> { EnterCall("new " + node.Identifier.Text, FirstBodyLine(node.Body)) };
+            var pre = new List<StatementSyntax> { EnterCall("new " + node.Identifier.Text, FirstBodyLine(node.Body), "ctor", ThisExpression()) };
             var body = TryFinally(visited.Body.Statements, pre);
             return visited.WithBody(body);
         }
@@ -325,7 +329,7 @@ public static class Tracer
             var firstLine = origGlobals.Count > 0
                 ? origGlobals[0].Statement.GetLocation().GetLineSpan().StartLinePosition.Line + 1
                 : 1;
-            var prelude = new List<StatementSyntax> { HookCall("Begin"), EnterCall("Main", firstLine) };
+            var prelude = new List<StatementSyntax> { HookCall("Begin"), EnterCall("Main", firstLine, "entry", null) };
             foreach (var s in prelude) members.Add(GlobalStatement(s));
 
             for (var i = 0; i < origGlobals.Count; i++)
@@ -382,10 +386,12 @@ public static class Tracer
             return ExpressionStatement(Invoke("Step", args.ToArray()));
         }
 
-        private static ExpressionStatementSyntax EnterCall(string name, int line)
+        private static ExpressionStatementSyntax EnterCall(string name, int line, string kind, ExpressionSyntax? receiver)
             => ExpressionStatement(Invoke("Enter",
                 Argument(LiteralExpression(SyntaxKind.StringLiteralExpression, Literal(name))),
-                Argument(LiteralExpression(SyntaxKind.NumericLiteralExpression, Literal(line)))));
+                Argument(LiteralExpression(SyntaxKind.NumericLiteralExpression, Literal(line))),
+                Argument(LiteralExpression(SyntaxKind.StringLiteralExpression, Literal(kind))),
+                Argument(receiver ?? LiteralExpression(SyntaxKind.NullLiteralExpression))));
 
         private static int FirstBodyLine(BlockSyntax? body)
         {
@@ -445,12 +451,14 @@ using System.Text;
 
 internal static class __CLTrace
 {
-    private sealed class Frame { public string Id = ""; public string Name = ""; public Dictionary<string, object?> Vars = new(); public List<string> Order = new(); }
+    private sealed class Frame { public string Id = ""; public string Name = ""; public string Kind = ""; public string Recv = ""; public Dictionary<string, object?> Vars = new(); public List<string> Order = new(); }
     private sealed class StaticSlot { public string Owner = ""; public string Name = ""; public string Value = ""; }
 
     private static readonly List<string> _steps = new();
     private static readonly List<Frame> _stack = new();
     private static readonly Dictionary<object, string> _ids = new(ReferenceEqualityComparer.Instance);
+    private static readonly Dictionary<object, int> _instanceNo = new(ReferenceEqualityComparer.Instance);
+    private static readonly Dictionary<string, int> _typeCount = new();
     private static StringWriter _out = new();
     private static TextWriter? _prev;
     private static int _budget;
@@ -463,7 +471,7 @@ internal static class __CLTrace
 
     public static void Reset(int budget)
     {
-        _steps.Clear(); _stack.Clear(); _ids.Clear();
+        _steps.Clear(); _stack.Clear(); _ids.Clear(); _instanceNo.Clear(); _typeCount.Clear();
         _budget = budget; _count = 0; _callSeq = 0; _objSeq = 0;
         Truncated = false; Stopped = false;
         _out = new StringWriter();
@@ -475,9 +483,14 @@ internal static class __CLTrace
         Console.SetOut(_out);
     }
 
-    public static void Enter(string name, int line)
+    public static void Enter(string name, int line, string kind, object? receiver)
     {
-        _stack.Add(new Frame { Id = "f" + (++_callSeq), Name = name });
+        var frame = new Frame { Id = "f" + (++_callSeq), Name = name, Kind = kind };
+        // For an instance call, note which object it runs on ("Cart #1") so several
+        // instances of the same type stay tellable apart. Value types box on the way
+        // in (a fresh identity each call), so their number would be meaningless - skip.
+        if (receiver != null && !receiver.GetType().IsValueType) frame.Recv = LabelOf(receiver);
+        _stack.Add(frame);
         // A call just started: record the fresh frame at its first line so the call
         // stack visibly grows here, before the call's body runs. This is what makes a
         // trace start in Main rather than jumping straight into the first callee.
@@ -528,6 +541,8 @@ internal static class __CLTrace
             sb.Append('{');
             sb.Append("\"id\":").Append(Str(frame.Id));
             sb.Append(",\"name\":").Append(Str(frame.Name));
+            sb.Append(",\"kind\":").Append(Str(frame.Kind));
+            if (frame.Recv.Length > 0) sb.Append(",\"recv\":").Append(Str(frame.Recv));
             sb.Append(",\"vars\":[");
             for (var v = 0; v < frame.Order.Count; v++)
             {
@@ -684,6 +699,7 @@ internal static class __CLTrace
         var sb = new StringBuilder();
         sb.Append("{\"id\":").Append(Str(id));
         sb.Append(",\"type\":").Append(Str(TypeName(t)));
+        sb.Append(",\"no\":").Append(InstanceNo(obj));
         sb.Append(",\"fields\":[");
         var first = true;
         foreach (var (name, value) in Members(obj, t))
@@ -767,6 +783,21 @@ internal static class __CLTrace
         _ids[o] = id;
         return id;
     }
+
+    // A per-type ordinal so the panel can label objects "Cart #1", "Cart #2" - a
+    // stable, human hint that survives across steps (the raw id is not shown).
+    private static int InstanceNo(object o)
+    {
+        if (_instanceNo.TryGetValue(o, out var n)) return n;
+        var type = TypeName(o.GetType());
+        _typeCount.TryGetValue(type, out var c);
+        c++;
+        _typeCount[type] = c;
+        _instanceNo[o] = c;
+        return c;
+    }
+
+    private static string LabelOf(object o) => TypeName(o.GetType()) + " #" + InstanceNo(o);
 
     private static string TypeName(Type t)
     {

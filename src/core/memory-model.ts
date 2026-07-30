@@ -41,6 +41,12 @@ export interface Frame {
   vars: Slot[];
   /** Colour-code this frame (e.g. tie a process to the core running it). */
   accent?: string;
+  /** What kind of call this frame is: "entry", "method", "static" or "ctor".
+   *  Shown as a small badge so a call reads as what it is. */
+  kind?: string;
+  /** For an instance call, the object it runs on (e.g. "Cart #1"), shown under
+   *  the frame name so several instances of one type stay tellable apart. */
+  recv?: string;
 }
 
 export interface GlobalSlot {
@@ -58,6 +64,9 @@ export interface HeapObject {
   glow?: boolean;
   /** Location label shown after the type (default "heap", e.g. "disk"). */
   at?: string;
+  /** A per-type instance number, shown as "#1" after the type, so two objects of
+   *  the same type are tellable apart. */
+  no?: number;
   /** Field names (keys) to spotlight - e.g. one whose value just changed. */
   hotFields?: string[];
 }
