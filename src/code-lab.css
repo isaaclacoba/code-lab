@@ -1118,10 +1118,15 @@
 /* Wide screens: editor beside the live memory picture, not above it. The editor
    is capped near 80 columns; the rest of the row is the memory view, which drops
    to a single column here (call stack + heap on top, narration + controls below)
-   so it fits the narrower right column. */
+   so it fits the narrower right column. The right column fills the row height set
+   by the taller editor, so the memory picture grows with the call stack while the
+   narration and transport controls stay pinned to the bottom. */
 @media (min-width: 1240px) {
-  .cl-vl { grid-template-columns: minmax(0, 43rem) minmax(33rem, 1fr); align-items: start; gap: 1.4rem; }
-  .cl-vl-stage .cl-mv { grid-template-columns: 1fr; }
+  .cl-vl { grid-template-columns: minmax(0, 43rem) minmax(33rem, 1fr); align-items: stretch; gap: 1.4rem; }
+  .cl-vl-stage { display: flex; }
+  .cl-vl-stage .cl-mv { flex: 1; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+  .cl-vl-stage .cl-mv .cl-mv-visual { min-height: 0; display: flex; flex-direction: column; }
+  .cl-vl-stage .cl-mv .cl-mv-heapcards { flex: 1; }
   .cl-vl-stage .cl-mv .cl-mv-aside { position: static; }
 }
 /* The running line, highlighted in the editor itself (so the code is shown once,
