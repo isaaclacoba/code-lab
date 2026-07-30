@@ -18,7 +18,7 @@ test("maps line to a 0-based pc and keeps the source", () => {
   assert.equal(steps.length, 2); // the one statement, plus a terminal "finished" step
   assert.equal(steps[0].pc, 0);
   assert.equal(steps[0].codeLive, true);
-  assert.equal(steps[1].narr, "The program has finished.");
+  assert.match(steps[1].narr, /finished/i);
   assert.equal(steps[1].pc, -1); // no line highlighted once the program is done
 });
 
@@ -125,7 +125,7 @@ test("incremental printed output is the delta of cumulative stdout", () => {
   assert.equal(steps[3].printed, undefined);
 });
 
-test("every real step narrates its own line; a terminal step says finished", () => {
+test("a step with no detectable change falls back to the source line; a terminal step summarizes", () => {
   const trace: ExecTrace = {
     code: CODE,
     steps: [
@@ -135,10 +135,100 @@ test("every real step narrates its own line; a terminal step says finished", () 
   };
   const steps = traceToSteps(trace);
   assert.equal(steps.length, 3); // two statements, plus the terminal step
-  assert.match(steps[0].narr, /int t = a \+ b;/);
-  assert.match(steps[1].narr, /Console\.WriteLine\(t\);/); // the last line keeps its narration
-  assert.equal(steps[2].narr, "The program has finished.");
+  assert.match(steps[1].narr, /Console\.WriteLine\(t\);/); // no effect to describe -> echo the line
+  assert.match(steps[2].narr, /finished/i);
   assert.equal(steps[2].pc, -1);
+});
+
+test("effect-based captions: call, return, print, create, and set", () => {
+  const mainEntry = (vars: Array<{ name: string; value?: string; ref?: string }>) => ({
+    id: "f1",
+    name: "Main",
+    kind: "entry",
+    vars,
+  });
+  const cat = { id: "o1", type: "Cat", no: 1, fields: [] as Array<[string, string]> };
+  const trace: ExecTrace = {
+    code: [
+      "static void Main() {",
+      "  Cat c = new Cat();",
+      "  Console.WriteLine(c.Speak());",
+      "}",
+      "string Speak() {",
+      '  return "Meow";',
+      "}",
+    ],
+    steps: [
+      { line: 2, frames: [mainEntry([])] }, // Main entered
+      { line: 2, frames: [mainEntry([{ name: "c", ref: "o1" }])], heap: [cat] }, // c = new Cat()
+      {
+        line: 6,
+        frames: [mainEntry([{ name: "c", ref: "o1" }]), { id: "f2", name: "Speak", kind: "method", recv: "Cat #1", vars: [] }],
+        heap: [cat],
+      }, // call Speak (the collapsed single snapshot for the one-line method)
+      // The WriteLine snapshot: Speak has returned (stack shrank) AND the text is
+      // now printed - both happen at once. The pop headlines the caption; the
+      // console panel shows the printed line, so nothing is lost.
+      { line: 3, frames: [mainEntry([{ name: "c", ref: "o1" }])], heap: [cat], stdout: "Meow\n" },
+    ],
+  };
+  const steps = traceToSteps(trace);
+  assert.equal(steps[0].narr, "Entered `Main`");
+  assert.equal(steps[1].narr, "Set `c` to a new `Cat`");
+  assert.equal(steps[2].narr, "Called `Speak()` on `Cat #1`");
+  assert.equal(steps[3].narr, "`Speak()` returned to `Main`");
+  assert.equal(steps[3].printed, "Meow\n"); // the print still rides along for the console panel
+  assert.equal(steps[4].narr, "The program finished. It printed 1 line.");
+});
+
+test("a direct Console.WriteLine reads as Printed x", () => {
+  const trace: ExecTrace = {
+    code: ['Console.WriteLine("Hi");'],
+    steps: [
+      { line: 1, frames: [{ id: "f1", name: "Main", kind: "entry", vars: [] }] },
+      { line: 1, frames: [{ id: "f1", name: "Main", kind: "entry", vars: [] }], stdout: "Hi\n" },
+    ],
+  };
+  const steps = traceToSteps(trace);
+  assert.equal(steps[1].narr, "Printed `Hi`");
+});
+
+test("a plain value assignment reads as Set x to v", () => {
+  const trace: ExecTrace = {
+    code: CODE,
+    steps: [
+      { line: 1, frames: [frame([["a", "1"]])] },
+      { line: 2, frames: [frame([["a", "1"], ["b", "2"]])] },
+    ],
+  };
+  const steps = traceToSteps(trace);
+  assert.equal(steps[1].narr, "Set `b` to `2`");
+});
+
+test("re-pointing a reference reads as Pointed x at Type #n", () => {
+  const trace: ExecTrace = {
+    code: ["Dog pet = a;", "pet = b;"],
+    steps: [
+      {
+        line: 1,
+        frames: [{ id: "main", name: "Main", vars: [{ name: "pet", ref: "o1" }] }],
+        heap: [
+          { id: "o1", type: "Dog", no: 1, fields: [] },
+          { id: "o2", type: "Dog", no: 2, fields: [] },
+        ],
+      },
+      {
+        line: 2,
+        frames: [{ id: "main", name: "Main", vars: [{ name: "pet", ref: "o2" }] }],
+        heap: [
+          { id: "o1", type: "Dog", no: 1, fields: [] },
+          { id: "o2", type: "Dog", no: 2, fields: [] },
+        ],
+      },
+    ],
+  };
+  const steps = traceToSteps(trace);
+  assert.equal(steps[1].narr, "Pointed `pet` at `Dog #2`");
 });
 
 test("a truncated trace ends with a stopped-early note, not finished", () => {

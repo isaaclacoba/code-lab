@@ -106,8 +106,11 @@ export function traceToSteps(trace: ExecTrace): Step[] {
     const stdout = ts.stdout ?? "";
     const printed = stdout.startsWith(prevStdout) ? stdout.slice(prevStdout.length) : stdout;
 
+    const prevFrames = i > 0 ? steps[i - 1].frames ?? [] : [];
+    const prevHeapIds = new Set((i > 0 ? steps[i - 1].heap ?? [] : []).map((o) => o.id));
+
     const step: Step = {
-      narr: runningNarration(ts.line, src),
+      narr: describeStep(prevFrames, ts, stack, heap, prevHeapIds, globals, printed, src),
       pc: typeof ts.line === "number" && ts.line > 0 ? ts.line - 1 : -1,
       codeLive: true,
       stack,
@@ -125,10 +128,12 @@ export function traceToSteps(trace: ExecTrace): Step[] {
     prevStdout = stdout;
   });
 
-  // A final snapshot that repeats the end state and says the program is done, so
-  // the last real statement keeps its own narration instead of being relabelled
-  // (a call on the last line was otherwise never shown). Nothing is hot here and
-  // no new output is printed - it is the same picture, one beat later.
+  // A final snapshot that repeats the end state and closes the run. The last
+  // real statement keeps its own caption (a call on the last line was otherwise
+  // never shown), and this beat states plainly that the program is over and how
+  // much it printed - which reads together with the console panel below it.
+  // Nothing is hot here and no new output is printed - it is the same picture,
+  // one beat later.
   const lastTs = steps[steps.length - 1];
   if (lastTs) {
     const values = new Map<string, string>();
@@ -141,10 +146,13 @@ export function traceToSteps(trace: ExecTrace): Step[] {
     );
     const globals = globalSlots(lastTs.statics ?? [], new Map<string, string>(), prevGlobals, false);
     const rodata = globalSlots(lastTs.consts ?? []);
+    const printedLines = prevStdout ? prevStdout.replace(/\n+$/, "").split("\n").length : 0;
     const terminal: Step = {
       narr: trace.truncated
         ? "Stopped early - there were too many steps to show the rest."
-        : "The program has finished.",
+        : printedLines > 0
+          ? `The program finished. It printed ${printedLines} line${printedLines === 1 ? "" : "s"}.`
+          : "The program finished without printing anything.",
       pc: -1,
       codeLive: true,
       stack,
@@ -257,9 +265,111 @@ function refDisplay(v: TraceVar): string {
   return v.ref != null ? `\u2192${v.ref}` : v.value ?? "null";
 }
 
-/** A plain, honest narration for a generated step: the source line being run.
- *  No fabricated teaching prose - the code is the story here. The terminal
- *  "finished" step is added by the caller, so every real step narrates its line. */
+/** A caption that says what a step DID, derived from the same diff that drives
+ *  the highlights - no AI, no fabricated prose. Picks the single most salient
+ *  event for the step: a call was made or returned, a value was printed, an
+ *  object was created, or a variable changed. When nothing structural is
+ *  detectable it falls back to the source line. This makes the caption carry its
+ *  own weight instead of echoing the line the editor already highlights. */
+function describeStep(
+  prevFrames: TraceFrame[],
+  ts: TraceStep,
+  stack: Frame[],
+  heap: HeapObject[],
+  prevHeapIds: Set<string>,
+  globals: GlobalSlot[],
+  printed: string,
+  src: string[],
+): string {
+  const curFrames = ts.frames ?? [];
+  const prevLen = prevFrames.length;
+  const curLen = curFrames.length;
+
+  // A call pushed a frame (its first statement runs together with the push after
+  // the redundant entry snapshot is collapsed).
+  if (curLen > prevLen) return callNarration(curFrames[curLen - 1]);
+  // A call returned - a frame was popped.
+  if (curLen < prevLen) return returnNarration(prevFrames[prevLen - 1], curFrames[curLen - 1]);
+
+  // Something was written to the console.
+  if (printed) return printedNarration(printed);
+
+  const topFrame = stack[stack.length - 1];
+  const hotSlot = topFrame ? topFrame.vars.find((v) => v.hot) : undefined;
+  const created = heap.find((o) => !prevHeapIds.has(o.id));
+
+  // A local was set to a freshly created object, e.g. `Cat c = new Cat();`.
+  if (created && hotSlot && hotSlot.ref != null && hotSlot.ref === created.id) {
+    return "Set `" + hotSlot.k + "` to a new `" + created.type + "`";
+  }
+  if (created) {
+    const label = typeof created.no === "number" ? `${created.type} #${created.no}` : created.type;
+    return typeof created.no === "number"
+      ? "Created a `" + created.type + "` (`" + label + "`)"
+      : "Created a `" + created.type + "`";
+  }
+  // A local changed value or was pointed at a different object.
+  if (hotSlot) {
+    if (hotSlot.ref != null) return "Pointed `" + hotSlot.k + "` at `" + heapLabel(hotSlot.ref, heap) + "`";
+    return "Set `" + hotSlot.k + "` to `" + (hotSlot.v ?? "") + "`";
+  }
+  // A static / field-like global changed.
+  const g = globals.find((s) => s.hot);
+  if (g) return "Set `" + g.k + "` to `" + g.v + "`";
+
+  return runningNarration(ts.line, src);
+}
+
+/** "Called `Speak()` on `Cat #1`" / "Entered `Main`" / "Called the `Clock`
+ *  constructor". The "on X" only appears for an instance call, so a static call
+ *  reads differently from a method call without a separate badge in the text. */
+function callNarration(top: TraceFrame): string {
+  if (top.kind === "entry") return "Entered `" + (top.name || "Main") + "`";
+  if (top.kind === "ctor") {
+    const type = (top.name || "").replace(/^new\s+/, "") || "object";
+    return "Called the `" + type + "` constructor";
+  }
+  const m = methodLabel(top);
+  return top.recv ? "Called `" + m + "` on `" + top.recv + "`" : "Called `" + m + "`";
+}
+
+/** "`Speak()` returned to `Main`" / "The `Clock` constructor finished". */
+function returnNarration(left: TraceFrame, back: TraceFrame | undefined): string {
+  const backName = back ? back.name : null;
+  if (left.kind === "ctor") {
+    const type = (left.name || "").replace(/^new\s+/, "") || "object";
+    return backName
+      ? "The `" + type + "` constructor finished - back in `" + backName + "`"
+      : "The `" + type + "` constructor finished";
+  }
+  const m = methodLabel(left);
+  return backName ? "`" + m + "` returned to `" + backName + "`" : "`" + m + "` returned";
+}
+
+function methodLabel(f: TraceFrame): string {
+  const name = f.name || "?";
+  return name.endsWith(")") ? name : name + "()";
+}
+
+/** "Printed `Meow`" - the fresh line, without the trailing newline, first line
+ *  only if several were printed at once. */
+function printedNarration(printed: string): string {
+  const parts = printed.replace(/\n+$/, "").split("\n");
+  const first = (parts[0] ?? "").replace(/`/g, "");
+  if (first === "") return "Printed a blank line";
+  const shown = parts.length > 1 ? first + " \u2026" : first;
+  return "Printed `" + shown + "`";
+}
+
+/** The card label for the object a reference points at, e.g. "Cat #1". */
+function heapLabel(ref: string, heap: HeapObject[]): string {
+  const o = heap.find((h) => h.id === ref);
+  if (!o) return "an object";
+  return typeof o.no === "number" ? `${o.type} #${o.no}` : o.type;
+}
+
+/** A plain fallback when no structural change is detectable for a step: the
+ *  source line being run. */
 function runningNarration(line: number, src: string[]): string {
   const text = typeof line === "number" && line > 0 ? (src[line - 1] ?? "").trim() : "";
   if (!text) return "Running the program.";
