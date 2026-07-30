@@ -31,6 +31,20 @@ test("several italic spans on one line each format independently", () => {
   );
 });
 
+test("asterisks inside a code span stay literal (not italicised)", () => {
+  assert.equal(
+    renderNarration("Printed `2 * 3 * 4`"),
+    "<p>Printed <code>2 * 3 * 4</code></p>",
+  );
+});
+
+test("emphasis outside a code span still formats when code holds asterisks", () => {
+  assert.equal(
+    renderNarration("*note* `a*b*c` **done**"),
+    "<p><em>note</em> <code>a*b*c</code> <strong>done</strong></p>",
+  );
+});
+
 test("blank lines split paragraphs", () => {
   assert.equal(renderNarration("One.\n\nTwo."), "<p>One.</p><p>Two.</p>");
 });

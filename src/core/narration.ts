@@ -8,13 +8,23 @@ export function escapeHtml(text: string): string {
   return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// Bold is resolved before italic so **word** is not misread as *word* with a
-// stray asterisk on each side; by the time italic runs, its asterisks are gone.
+// Code spans are resolved first, then emphasis is applied only to the text
+// OUTSIDE those spans - like markdown, a `code` chip is literal, so an asterisk
+// in code (a printed value, a multiplication) is not misread as italic. Bold is
+// resolved before italic so **word** is not misread as *word* with a stray
+// asterisk on each side; by the time italic runs, its asterisks are gone.
 function inline(text: string): string {
   return escapeHtml(text)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    .split(/(<code>[\s\S]*?<\/code>)/)
+    .map((seg) =>
+      seg.startsWith("<code>")
+        ? seg
+        : seg
+            .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+            .replace(/\*([^*]+)\*/g, "<em>$1</em>"),
+    )
+    .join("");
 }
 
 /** Render narration text to safe HTML. A single-line string stays one paragraph,
