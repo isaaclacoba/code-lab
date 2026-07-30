@@ -1098,9 +1098,11 @@
 .cl-mv .cl-mv-hp-srows { display: flex; flex-direction: column; gap: 4px; }
 
 /* ------------------------------------------------------- VizLab (visualize) */
-/* The "Visualize my code" surface: a Monaco editor stacked over the MemoryViz
-   renderer it drives. Stacked (not side by side) because MemoryViz is itself a
-   two-column widget and needs the room. */
+/* The "Visualize my code" surface: a Monaco editor and the MemoryViz renderer it
+   drives. Narrow screens stack them (editor over the full-width, two-column
+   memory view). Wide screens sit them side by side (see the media query below):
+   the editor rarely needs more than ~80 columns, so its spare width goes to
+   showing the call stack and heap in parallel. */
 .cl-vl { display: grid; gap: 1rem; }
 .cl-vl-editor { display: grid; gap: 0.6rem; }
 .cl-vl-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
@@ -1113,6 +1115,15 @@
    together at the top of the aside, so there is no dead gap on a tall column. */
 .cl-vl-stage .cl-mv .cl-mv-aside { grid-template-rows: none; grid-auto-rows: max-content; align-content: start; }
 .cl-vl-stage .cl-mv .cl-mv-aside > .cl-mv-narr { align-self: start; }
+/* Wide screens: editor beside the live memory picture, not above it. The editor
+   is capped near 80 columns; the rest of the row is the memory view, which drops
+   to a single column here (call stack + heap on top, narration + controls below)
+   so it fits the narrower right column. */
+@media (min-width: 1240px) {
+  .cl-vl { grid-template-columns: minmax(0, 43rem) minmax(33rem, 1fr); align-items: start; gap: 1.4rem; }
+  .cl-vl-stage .cl-mv { grid-template-columns: 1fr; }
+  .cl-vl-stage .cl-mv .cl-mv-aside { position: static; }
+}
 /* The running line, highlighted in the editor itself (so the code is shown once,
    not duplicated in a separate panel). Monaco renders these decorations in the
    page DOM, so a plain class rule reaches them. */
