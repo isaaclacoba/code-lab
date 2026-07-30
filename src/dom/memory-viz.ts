@@ -50,6 +50,7 @@ interface PanelBuildCtx {
   regionTags: Partial<Record<RegionName, string>>;
   legend?: LegendItem[];
   nextHref?: string;
+  nextLabel?: string;
 }
 
 let instanceSeq = 0;
@@ -73,6 +74,8 @@ export class MemoryViz {
 
   private scale = 1;
   private readonly nextHref?: string;
+  private readonly nextLabel?: string;
+  private readonly onXpChange?: (xp: number) => void;
   private readonly progress: ProgressStore;
   private autoplay!: Autoplay;
 
@@ -93,7 +96,7 @@ export class MemoryViz {
     retrieval: () => new RetrievalView(),
     planboard: () => new PlanboardView(),
     controls: (_spec, ctx) =>
-      (this.controls = new VizControls(ctx.actions, ctx.handlers, ctx.nextHref, ctx.legend)),
+      (this.controls = new VizControls(ctx.actions, ctx.handlers, ctx.nextHref, ctx.legend, ctx.nextLabel)),
   };
 
   private constructor(host: HTMLElement, config: MemoryVizConfig) {
@@ -105,8 +108,10 @@ export class MemoryViz {
 
     this.actions = config.actions ?? [];
     this.nextHref = config.nextHref;
+    this.nextLabel = config.nextLabel;
+    this.onXpChange = config.onXpChange;
     this.progress = new ProgressStore(
-      config.xpKey ?? "course_global_xp",
+      config.xpKey ?? "codelab_xp",
       config.awardedKey,
       typeof config.awardAmount === "number" ? config.awardAmount : 20,
     );
@@ -155,6 +160,7 @@ export class MemoryViz {
       regionTags: config.regionTags ?? {},
       legend: config.legend,
       nextHref: this.nextHref,
+      nextLabel: this.nextLabel,
     };
 
     this.layout = config.layout ?? {
@@ -267,10 +273,9 @@ export class MemoryViz {
     }
   }
 
-  /** Refresh the course XP label in the hero, if the page has one. */
+  /** Report the current tracked XP to the host, which owns any XP label. */
   private refreshXp(): void {
-    const label = document.getElementById("courseXpLabel");
-    if (label) label.textContent = `Course XP: ${this.progress.xp()}`;
+    this.onXpChange?.(this.progress.xp());
   }
 
   /** Mark the lesson complete and grant XP once, when the last step is reached. */

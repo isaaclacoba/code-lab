@@ -28,6 +28,9 @@ export interface QuizConfig {
   /** Shown on a pass. */
   nextHref?: string;
   nextLabel?: string;
+  /** Called with the current XP after a passing attempt awards it, so the host
+   *  can reflect it in its own UI. The component owns no XP label. */
+  onXpChange?: (xp: number) => void;
   questions: QuizQuestion[];
 }
 

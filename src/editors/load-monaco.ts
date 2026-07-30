@@ -15,14 +15,18 @@ declare global {
 }
 
 export interface LoadMonacoConfig {
-  /** Base URL of monaco's "min/vs" folder. Default: jsDelivr 0.52.2. */
+  /** Base URL of monaco's "min/vs" folder. Default: {@link DEFAULT_BASE}
+   *  (cdnjs 0.52.2). Point this at your own copy to avoid the CDN. */
   base?: string;
   /** Register curated, client-side C# completions. Default true. */
   registerCSharp?: boolean;
 }
 
+/** Default Monaco CDN + version used when no `base` is supplied. Consumers that
+ *  want a pinned/offline copy should pass their own `base` to loadMonaco(). */
+const MONACO_VERSION = "0.52.2";
 const DEFAULT_BASE =
-  "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs";
+  `https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/${MONACO_VERSION}/min/vs`;
 
 let pending: Promise<MonacoNamespace> | undefined;
 

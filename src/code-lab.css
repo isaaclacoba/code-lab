@@ -1,7 +1,10 @@
 /* Code Lab styles. All class names are namespaced under `cl-`. The host page
    may override the CSS variables below to theme the component. */
 
-.cl-root {
+/* Design tokens. Scoped to the root AND each widget's own class with :where()
+   (specificity 0) so the widgets are self-sufficient when mounted without a
+   .cl-root wrapper, while a host page can still override any token. */
+:where(.cl-root, .cl-mv, .cl-vl, .cl-quiz) {
   --cl-ink: #1b1d27;
   --cl-ink-soft: #5b6377;
   --cl-accent: #f0b429;
@@ -10,7 +13,9 @@
   --cl-line: #2f3440;
   --cl-radius: 12px;
   --cl-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
 
+.cl-root {
   display: grid;
   gap: 0.7rem;
 }

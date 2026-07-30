@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Level 3: SOLID in practice</title>
+    <title>Code Lab</title>
     <base href="./" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -138,7 +138,7 @@
             awardXp: function (amount) {
                 try {
                     if (window.parent && window.parent !== window) {
-                        window.parent.postMessage({ type: "level3-xp", amount: amount }, "*");
+                        window.parent.postMessage({ type: "codelab:xp", amount: amount }, window.location.origin);
                     }
                 } catch (e) {
                     // Ignore cross-origin issues when not embedded.

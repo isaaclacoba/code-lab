@@ -5,6 +5,7 @@
 //   CodeLab.Quiz.create(host, config)
 
 import type { QuizConfig, QuizPlan } from "../core/quiz-model.js";
+import type { KeyValueStore } from "../core/progress-store.js";
 import { drawQuiz, firstUnanswered, scoreQuiz } from "../core/quiz-model.js";
 
 /** Persistence + XP hook, injected so the component is testable and reusable. */
@@ -15,19 +16,24 @@ export interface QuizStore {
   addXP(amount: number): void;
 }
 
-function localStore(xpKey: string, awardedKey: string): QuizStore {
+function localStore(
+  xpKey: string,
+  awardedKey: string,
+  kv: KeyValueStore = globalThis.localStorage,
+): QuizStore {
   const read = (): { passed?: boolean } => {
     try {
-      return JSON.parse(localStorage.getItem(awardedKey) || "{}");
+      return JSON.parse(kv.getItem(awardedKey) || "{}");
     } catch {
       return {};
     }
   };
+  const xp = () => parseInt(kv.getItem(xpKey) || "0", 10);
   return {
     hasPassed: () => Boolean(read().passed),
-    markPassed: () => localStorage.setItem(awardedKey, JSON.stringify({ passed: true })),
-    getXP: () => parseInt(localStorage.getItem(xpKey) || "0", 10),
-    addXP: (amount) => localStorage.setItem(xpKey, String((parseInt(localStorage.getItem(xpKey) || "0", 10)) + amount)),
+    markPassed: () => kv.setItem(awardedKey, JSON.stringify({ passed: true })),
+    getXP: xp,
+    addXP: (amount) => kv.setItem(xpKey, String(xp() + amount)),
   };
 }
 
@@ -72,7 +78,7 @@ export class Quiz {
     this.cfg = config;
     this.awardAmount = typeof config.awardAmount === "number" ? config.awardAmount : 40;
     this.store =
-      store ?? localStore(config.xpKey || "course_global_xp", config.awardedKey || `${config.prefix || "quiz"}_awarded`);
+      store ?? localStore(config.xpKey || "codelab_xp", config.awardedKey || `${config.prefix || "quiz"}_awarded`);
 
     this.root = document.createElement("section");
     this.root.className = "cl-quiz";
@@ -235,9 +241,8 @@ export class Quiz {
     this.els.result.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  /** Best-effort refresh of the course's shared XP label, if the page has one. */
+  /** Report the current XP to the host, which owns any XP label. */
   private refreshXpLabel(): void {
-    const label = document.getElementById("courseXpLabel");
-    if (label) label.textContent = `Course XP: ${this.store.getXP()}`;
+    this.cfg.onXpChange?.(this.store.getXP());
   }
 }

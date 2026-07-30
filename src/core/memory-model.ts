@@ -235,8 +235,14 @@ export interface MemoryVizConfig {
   legend?: LegendItem[];
   /** Override a die region's header tag (e.g. relabel STACK as "Processes in RAM"). */
   regionTags?: Partial<Record<RegionName, string>>;
-  /** URL the final "Next lesson" button navigates to (the next lesson in the part). */
+  /** URL the final "next" button navigates to (the next lesson in the part). */
   nextHref?: string;
+  /** Label for the final "next" button when the last step is reached
+   *  (default "Next"). The host can supply its own wording. */
+  nextLabel?: string;
+  /** Called whenever the tracked XP changes (after awarding on the last step),
+   *  so the host can reflect it in its own UI. The widget owns no XP label. */
+  onXpChange?: (xp: number) => void;
   /** CSS background for the whole widget (switch the backdrop entirely). */
   background?: string;
   /** Starting text scale (1 = default). The viewer can still adjust it live. */

@@ -126,3 +126,15 @@ an `aria-live` region.
 npm run build      # dist: ESM + CJS + IIFE + .d.ts + css
 npm run typecheck
 ```
+
+## Backend (runner)
+
+The npm package ships only the front-end in `dist/`: the Monaco editor wrapper,
+widgets, and the postMessage iframe runner client.
+The actual C# execution backend is the Blazor/Roslyn WASM host under
+`compiler-host/`.
+Build that host separately with `npm run build:host` or
+`dotnet publish compiler-host`, then host the published files at a URL your app
+passes to the iframe runner.
+The runner client posts source to the host iframe and receives results with
+`postMessage` using the `coderunner:*` message protocol.

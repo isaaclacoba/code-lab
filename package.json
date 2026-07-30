@@ -22,6 +22,7 @@
   ],
   "scripts": {
     "build": "tsup",
+    "prepublishOnly": "npm run build",
     "build:host": "dotnet publish compiler-host -c Release -o dist/compiler-host",
     "build:all": "npm run build && npm run build:host",
     "dev": "tsup --watch",

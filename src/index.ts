@@ -9,8 +9,8 @@ export type { MonacoEditorConfig } from "./editors/monaco.js";
 export { loadMonaco } from "./editors/load-monaco.js";
 export type { LoadMonacoConfig } from "./editors/load-monaco.js";
 
-export { RoslynIframeRunner } from "./runners/roslyn-iframe.js";
-export type { RoslynIframeRunnerConfig, TraceOutcome } from "./runners/roslyn-iframe.js";
+export { IframeRunner, RoslynIframeRunner } from "./runners/roslyn-iframe.js";
+export type { IframeRunnerConfig, RoslynIframeRunnerConfig, TraceOutcome } from "./runners/roslyn-iframe.js";
 
 export { MemoryViz } from "./dom/memory-viz.js";
 export { VizLab } from "./dom/viz-lab.js";

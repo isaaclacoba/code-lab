@@ -1,6 +1,6 @@
 import { MonacoEditor } from "../editors/monaco.js";
 import { loadMonaco } from "../editors/load-monaco.js";
-import { RoslynIframeRunner } from "../runners/roslyn-iframe.js";
+import { IframeRunner } from "../runners/roslyn-iframe.js";
 import { traceToSteps } from "../core/exec-tracer-model.js";
 import type { ExecTrace } from "../core/exec-tracer-model.js";
 import type { Step } from "../core/memory-model.js";
@@ -34,6 +34,8 @@ export interface VizLabConfig {
   starter?: string;
   /** Which level of detail to render first. Default "heap" (the richest). */
   level?: VizLevel;
+  /** Editor language id for Monaco. Default "csharp". */
+  language?: string;
   /** Legend swatches passed through to the visualiser controls. */
   legend?: LegendItem[];
   /** Max wait for the host to warm up, in ms. Passed to the runner. */
@@ -73,10 +75,11 @@ export class VizLab {
   private readonly levelBtns = new Map<VizLevel, HTMLButtonElement>();
 
   private readonly editor = new MonacoEditor();
-  private readonly runner: RoslynIframeRunner;
+  private readonly runner: IframeRunner;
 
   private level: VizLevel;
   private legend?: LegendItem[];
+  private readonly language: string;
   private lastTrace: ExecTrace | null = null;
   private lastSteps: Step[] | null = null;
   private viz: MemoryViz | null = null;
@@ -85,7 +88,8 @@ export class VizLab {
   private constructor(host: HTMLElement, config: VizLabConfig) {
     this.level = config.level ?? "heap";
     this.legend = config.legend;
-    this.runner = new RoslynIframeRunner({
+    this.language = config.language ?? "csharp";
+    this.runner = new IframeRunner({
       url: config.runnerUrl,
       readyTimeout: config.readyTimeout ?? 180000,
     });
@@ -153,7 +157,7 @@ export class VizLab {
     await loadMonaco();
     await this.editor.mount(this.editorHost, {
       value: starter,
-      language: "csharp",
+      language: this.language,
       readOnly: false,
       autoHeight: { minHeight: 220, maxHeight: 640 },
     });

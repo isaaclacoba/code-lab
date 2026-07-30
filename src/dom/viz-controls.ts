@@ -58,6 +58,7 @@ export class VizControls implements Panel {
     handlers: VizControlsHandlers,
     private readonly nextHref?: string,
     legend?: LegendItem[],
+    private readonly nextLabel: string = "Next \u25b6",
   ) {
     this.el = document.createElement("div");
     this.el.innerHTML = `
@@ -160,7 +161,7 @@ export class VizControls implements Panel {
     const next = this.el.querySelector('[data-c="next"]') as HTMLButtonElement;
     if (state.atEnd && this.nextHref) {
       next.disabled = false;
-      next.textContent = "Next lesson \u25b6";
+      next.textContent = this.nextLabel;
     } else {
       next.disabled = state.atEnd;
       next.textContent = "Next \u25b6";

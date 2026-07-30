@@ -18,7 +18,7 @@ export interface TraceOutcome {
   errors: { line?: number | null; friendly?: string | null; raw: string }[];
 }
 
-export interface RoslynIframeRunnerConfig {
+export interface IframeRunnerConfig {
   /** URL of the compiler host page (a Blazor WASM app embedding the contract).
    *  Example: "level3-app/index.html?runner=1". Must be same-origin. */
   url: string;
@@ -53,7 +53,7 @@ interface Pending {
  *   - parent -> host: { type: "coderunner:trace", id, code }
  *   - host -> parent: { type: "coderunner:traceResult", id, result }
  */
-export class RoslynIframeRunner implements CodeRunner {
+export class IframeRunner implements CodeRunner {
   private url: string;
   private readyTimeout: number;
   private runTimeout: number;
@@ -66,7 +66,7 @@ export class RoslynIframeRunner implements CodeRunner {
   private pending = new Map<number, Pending>();
   private onMessage = (e: MessageEvent) => this.handleMessage(e);
 
-  constructor(config: RoslynIframeRunnerConfig) {
+  constructor(config: IframeRunnerConfig) {
     this.url = config.url;
     this.readyTimeout = config.readyTimeout ?? 120000;
     this.runTimeout = config.runTimeout ?? 60000;
@@ -195,3 +195,9 @@ export class RoslynIframeRunner implements CodeRunner {
     this.warmPromise = null;
   }
 }
+
+/** @deprecated Renamed to {@link IframeRunner}. This is a generic postMessage
+ *  iframe runner, not tied to Roslyn; the alias is kept for back-compat. */
+export const RoslynIframeRunner = IframeRunner;
+/** @deprecated Renamed to {@link IframeRunnerConfig}. */
+export type RoslynIframeRunnerConfig = IframeRunnerConfig;
