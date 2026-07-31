@@ -14,8 +14,9 @@ import type {
   LegendItem,
   Step,
   VizLayout,
+  VizLabels,
 } from "../core/memory-model.js";
-import { ALL_REGIONS } from "../core/memory-model.js";
+import { ALL_REGIONS, DEFAULT_VIZ_LABELS } from "../core/memory-model.js";
 import { VizPlayer } from "../core/viz-player.js";
 import type { PlayerState } from "../core/viz-player.js";
 import { ProgressStore } from "../core/progress-store.js";
@@ -52,6 +53,7 @@ interface PanelBuildCtx {
   legend?: LegendItem[];
   nextHref?: string;
   nextLabel?: string;
+  vizLabels: VizLabels;
 }
 
 let instanceSeq = 0;
@@ -94,12 +96,12 @@ export class MemoryViz {
     agent: (spec) => new AgentView(spec.fan),
     agentloop: () => new AgentLoopView(),
     memoryshelf: () => new MemoryShelfView(),
-    toolrack: () => new ToolRackView(),
-    transcript: () => new TranscriptView(),
+    toolrack: (_spec, ctx) => new ToolRackView(ctx.vizLabels),
+    transcript: (_spec, ctx) => new TranscriptView(ctx.vizLabels),
     retrieval: () => new RetrievalView(),
     planboard: () => new PlanboardView(),
     controls: (_spec, ctx) =>
-      (this.controls = new VizControls(ctx.actions, ctx.handlers, ctx.nextHref, ctx.legend, ctx.nextLabel)),
+      (this.controls = new VizControls(ctx.actions, ctx.handlers, ctx.nextHref, ctx.legend, ctx.nextLabel, ctx.vizLabels)),
   };
 
   private constructor(host: HTMLElement, config: MemoryVizConfig) {
@@ -150,6 +152,7 @@ export class MemoryViz {
       onSeek: (i) => { this.stop(); this.step(this.player.goTo(i), false); },
     };
 
+    const vizLabels: VizLabels = { ...DEFAULT_VIZ_LABELS, ...config.labels };
     this.buildCtx = {
       uid,
       code: config.code ?? [],
@@ -164,7 +167,8 @@ export class MemoryViz {
       regionTags: config.regionTags ?? {},
       legend: config.legend,
       nextHref: this.nextHref,
-      nextLabel: this.nextLabel,
+      nextLabel: this.nextLabel ?? vizLabels.nextLesson,
+      vizLabels,
     };
 
     this.layout = config.layout ?? {

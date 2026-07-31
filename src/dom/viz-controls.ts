@@ -3,7 +3,8 @@
 // emits intent through handlers and renders the state it is given.
 
 import type { Panel, SyncCtx } from "./panel.js";
-import type { LegendItem } from "../core/memory-model.js";
+import type { LegendItem, VizLabels } from "../core/memory-model.js";
+import { DEFAULT_VIZ_LABELS } from "../core/memory-model.js";
 import type { DerivedTrace, NotableKind } from "../core/exec-trace.js";
 
 export interface VizControlsHandlers {
@@ -58,26 +59,27 @@ export class VizControls implements Panel {
     handlers: VizControlsHandlers,
     private readonly nextHref?: string,
     legend?: LegendItem[],
-    private readonly nextLabel: string = "Next \u25b6",
+    private readonly nextLabel: string = DEFAULT_VIZ_LABELS.nextLesson,
+    private readonly labels: VizLabels = DEFAULT_VIZ_LABELS,
   ) {
     this.el = document.createElement("div");
     this.el.innerHTML = `
       <div class="cl-mv-controls">
-        <button data-c="prev">◀ Prev</button>
-        <button data-c="play" class="cl-mv-primary">▶ Play</button>
-        <button data-c="next" class="cl-mv-primary">Next ▶</button>
-        <button data-c="reset">Reset</button>
+        <button data-c="prev">${labels.prev}</button>
+        <button data-c="play" class="cl-mv-primary">${labels.play}</button>
+        <button data-c="next" class="cl-mv-primary">${labels.next}</button>
+        <button data-c="reset">${labels.reset}</button>
         <span class="cl-mv-spacer"></span>
-        <div class="cl-mv-textsize" role="group" aria-label="Text size">
+        <div class="cl-mv-textsize" role="group" aria-label="${labels.textSize}">
           <span class="cl-mv-aa" aria-hidden="true">Aa</span>
-          <button data-size="0.9" title="Small text" aria-label="Small text">S</button>
-          <button data-size="1" title="Default text" aria-label="Default text">M</button>
-          <button data-size="1.2" title="Large text" aria-label="Large text">L</button>
+          <button data-size="0.9" title="${labels.textSmall}" aria-label="${labels.textSmall}">S</button>
+          <button data-size="1" title="${labels.textDefault}" aria-label="${labels.textDefault}">M</button>
+          <button data-size="1.2" title="${labels.textLarge}" aria-label="${labels.textLarge}">L</button>
         </div>
       </div>
       <div class="cl-mv-scrubwrap">
         <svg class="cl-mv-depth" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
-        <input type="range" class="cl-mv-scrub" data-scrub min="0" value="0" step="1" aria-label="Step" />
+        <input type="range" class="cl-mv-scrub" data-scrub min="0" value="0" step="1" aria-label="${labels.step}" />
         <div class="cl-mv-marks" data-marks></div>
       </div>
       <div class="cl-mv-legend">${legendHtml(legend && legend.length ? legend : DEFAULT_LEGEND)}</div>`;
@@ -164,7 +166,7 @@ export class VizControls implements Panel {
       next.textContent = this.nextLabel;
     } else {
       next.disabled = state.atEnd;
-      next.textContent = "Next \u25b6";
+      next.textContent = this.labels.next;
     }
     const scrub = this.el.querySelector("[data-scrub]") as HTMLInputElement;
     scrub.max = String(Math.max(0, state.total - 1));
@@ -172,7 +174,7 @@ export class VizControls implements Panel {
   }
 
   setPlaying(playing: boolean): void {
-    (this.el.querySelector('[data-c="play"]') as HTMLElement).textContent = playing ? "⏸ Pause" : "▶ Play";
+    (this.el.querySelector('[data-c="play"]') as HTMLElement).textContent = playing ? this.labels.pause : this.labels.play;
   }
 
   resetActions(): void {

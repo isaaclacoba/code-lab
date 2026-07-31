@@ -9,6 +9,8 @@
 import type { MsgRole, MsgAuthor, TranscriptScene } from "../core/transcript-model.js";
 import { resolveTranscript } from "../core/transcript-model.js";
 import { escapeHtml } from "../core/narration.js";
+import type { VizLabels } from "../core/memory-model.js";
+import { DEFAULT_VIZ_LABELS } from "../core/memory-model.js";
 import type { Panel, SyncCtx } from "./panel.js";
 
 /** How each role badge reads. Pure presentation, so the model stays markup-free. */
@@ -20,18 +22,20 @@ const ROLE_META: Record<MsgRole, string> = {
   tool: "tool",
 };
 
-/** How each author tag reads - the honest "who wrote this line". */
-const AUTHOR_META: Record<MsgAuthor, string> = {
-  you: "you wrote this",
-  app: "your app wrote this",
-  model: "the model wrote this",
-  code: "your code wrote this",
-};
-
 export class TranscriptView implements Panel {
   readonly el: HTMLElement;
 
-  constructor() {
+  /** How each author tag reads - the honest "who wrote this line". Injectable
+   *  for i18n; the English default keeps the widget byte-identical. */
+  private readonly authorMeta: Record<MsgAuthor, string>;
+
+  constructor(labels: VizLabels = DEFAULT_VIZ_LABELS) {
+    this.authorMeta = {
+      you: labels.authorYou,
+      app: labels.authorApp,
+      model: labels.authorModel,
+      code: labels.authorCode,
+    };
     this.el = document.createElement("div");
     this.el.className = "cl-tx";
     this.el.innerHTML = `
@@ -75,7 +79,7 @@ export class TranscriptView implements Panel {
           `<div class="cl-tx-msg is-${m.role} by-${m.author}${m.hot ? " is-hot" : ""}">` +
           `<div class="cl-tx-head">` +
           `<span class="cl-tx-role">${ROLE_META[m.role]}</span>` +
-          `<span class="cl-tx-by">${AUTHOR_META[m.author]}</span>` +
+          `<span class="cl-tx-by">${this.authorMeta[m.author]}</span>` +
           `</div>` +
           `<div class="cl-tx-text">${escapeHtml(m.text)}</div>` +
           note +

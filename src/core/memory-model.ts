@@ -236,6 +236,61 @@ export interface LegendItem {
   round?: boolean;
 }
 
+/** Every hardcoded English chrome string the MemoryViz views render: the
+ *  transport controls, the font-size control, the transcript author tags and the
+ *  tool-rack direction words. Overridable for i18n; any omitted key keeps the
+ *  English default. Glyphs (arrows, "Aa", S/M/L) stay in the view, not here. */
+export interface VizLabels {
+  /** VizControls transport buttons + scrubber. */
+  prev: string;
+  play: string;
+  pause: string;
+  next: string;
+  /** The final "next" button when a nextHref is set and the last step is reached. */
+  nextLesson: string;
+  reset: string;
+  step: string;
+  /** Font-size control group + its S/M/L buttons. */
+  textSize: string;
+  textSmall: string;
+  textDefault: string;
+  textLarge: string;
+  /** TranscriptView author tags - the honest "who wrote this line". */
+  authorYou: string;
+  authorApp: string;
+  authorModel: string;
+  authorCode: string;
+  /** ToolRackView I/O direction words (arrows added by the view). */
+  toolCall: string;
+  toolError: string;
+  toolResult: string;
+}
+
+/** English defaults for every VizLabels string. A widget built with no `labels`
+ *  renders exactly these, so the default language stays byte-identical. */
+export const DEFAULT_VIZ_LABELS: VizLabels = {
+  prev: "\u25c0 Prev",
+  play: "\u25b6 Play",
+  pause: "\u23f8 Pause",
+  next: "Next \u25b6",
+  // Byte-identical with the pre-i18n end button (was "Next"); the course catalog
+  // supplies a distinct "Next lesson" string on i18n pages via `labels`.
+  nextLesson: "Next \u25b6",
+  reset: "Reset",
+  step: "Step",
+  textSize: "Text size",
+  textSmall: "Small text",
+  textDefault: "Default text",
+  textLarge: "Large text",
+  authorYou: "you wrote this",
+  authorApp: "your app wrote this",
+  authorModel: "the model wrote this",
+  authorCode: "your code wrote this",
+  toolCall: "call \u2192",
+  toolError: "\u2190 error",
+  toolResult: "\u2190 result",
+};
+
 export interface MemoryVizConfig {
   code: string[];
   steps: Step[];
@@ -258,6 +313,9 @@ export interface MemoryVizConfig {
   /** Label for the final "next" button when the last step is reached
    *  (default "Next"). The host can supply its own wording. */
   nextLabel?: string;
+  /** Overridable chrome strings for i18n (transport, font control, transcript
+   *  author tags, tool-rack directions). Any omitted key falls back to English. */
+  labels?: Partial<VizLabels>;
   /** Called whenever the tracked XP changes (after awarding on the last step),
    *  so the host can reflect it in its own UI. The widget owns no XP label. */
   onXpChange?: (xp: number) => void;

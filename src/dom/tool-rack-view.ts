@@ -8,20 +8,24 @@
 import type { ToolIoKind, ToolRackScene } from "../core/tool-rack-model.js";
 import { resolveRackTools, toolRackRows } from "../core/tool-rack-model.js";
 import { escapeHtml } from "../core/narration.js";
+import type { VizLabels } from "../core/memory-model.js";
+import { DEFAULT_VIZ_LABELS } from "../core/memory-model.js";
 import type { Panel, SyncCtx } from "./panel.js";
-
-/** How each I/O row reads: its CSS class and its direction label. Pure
- *  presentation, so the model stays free of markup. */
-const IO_META: Record<ToolIoKind, { cls: string; dir: string }> = {
-  call: { cls: "cl-tr-call", dir: "call \u2192" },
-  error: { cls: "cl-tr-error", dir: "\u2190 error" },
-  result: { cls: "cl-tr-result", dir: "\u2190 result" },
-};
 
 export class ToolRackView implements Panel {
   readonly el: HTMLElement;
 
-  constructor() {
+  /** How each I/O row reads: its CSS class and its direction label. The direction
+   *  words are injectable for i18n; the arrows are fixed. Pure presentation, so
+   *  the model stays free of markup. */
+  private readonly ioMeta: Record<ToolIoKind, { cls: string; dir: string }>;
+
+  constructor(labels: VizLabels = DEFAULT_VIZ_LABELS) {
+    this.ioMeta = {
+      call: { cls: "cl-tr-call", dir: labels.toolCall },
+      error: { cls: "cl-tr-error", dir: labels.toolError },
+      result: { cls: "cl-tr-result", dir: labels.toolResult },
+    };
     this.el = document.createElement("div");
     this.el.className = "cl-tr";
     this.el.innerHTML = `
@@ -59,7 +63,7 @@ export class ToolRackView implements Panel {
     io.hidden = rows.length === 0;
     io.innerHTML = rows
       .map((row) => {
-        const meta = IO_META[row.kind];
+        const meta = this.ioMeta[row.kind];
         return (
           `<div class="cl-tr-line ${meta.cls}">` +
           `<span class="cl-tr-dir">${meta.dir}</span>` +

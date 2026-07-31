@@ -23,6 +23,7 @@ export type {
   PanelSpec,
   VizLayout,
   LegendItem,
+  VizLabels,
   Step as MemoryVizStep,
   VizAction as MemoryVizAction,
   Frame as MemoryVizFrame,
@@ -40,6 +41,7 @@ export {
   referencedIds,
   resolveModel,
 } from "./core/memory-model.js";
+export { DEFAULT_VIZ_LABELS } from "./core/memory-model.js";
 
 export { traceToSteps } from "./core/exec-tracer-model.js";
 export type {
