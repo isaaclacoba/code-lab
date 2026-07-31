@@ -8,13 +8,17 @@ import type { AgentCore, AgentScene, AgentToken, AgentTool } from "../core/agent
 import { agentFanRows } from "../core/agent-model.js";
 import { escapeHtml } from "../core/narration.js";
 import type { Panel, SyncCtx } from "./panel.js";
+import type { VizLabels } from "../core/memory-model.js";
+import { DEFAULT_VIZ_LABELS } from "../core/memory-model.js";
 
 export class AgentView implements Panel {
   readonly el: HTMLElement;
   private readonly showFan: boolean;
+  private readonly fanCaption: string;
 
-  constructor(showFan = true) {
+  constructor(showFan = true, labels: VizLabels = DEFAULT_VIZ_LABELS) {
     this.showFan = showFan;
+    this.fanCaption = labels.fanCaption;
     this.el = document.createElement("div");
     this.el.className = "cl-ag";
     this.el.innerHTML = `
@@ -131,7 +135,7 @@ export class AgentView implements Panel {
   private renderFan(scene: AgentScene): void {
     const host = this.el.querySelector("[data-fan]") as HTMLElement;
     const rows = agentFanRows(scene.fan);
-    const caption = scene.fan?.caption ?? "Probability of the next token";
+    const caption = scene.fan?.caption ?? this.fanCaption;
     if (rows.length === 0) {
       host.className = "cl-ag-fan is-empty";
       host.innerHTML = `<span class="cl-ag-cap">${escapeHtml(caption)}</span>`;

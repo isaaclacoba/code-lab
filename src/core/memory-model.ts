@@ -264,6 +264,8 @@ export interface VizLabels {
   toolCall: string;
   toolError: string;
   toolResult: string;
+  /** AgentView fan caption - the next-token probability panel's heading. */
+  fanCaption: string;
 }
 
 /** English defaults for every VizLabels string. A widget built with no `labels`
@@ -289,6 +291,7 @@ export const DEFAULT_VIZ_LABELS: VizLabels = {
   toolCall: "call \u2192",
   toolError: "\u2190 error",
   toolResult: "\u2190 result",
+  fanCaption: "Probability of the next token",
 };
 
 export interface MemoryVizConfig {
