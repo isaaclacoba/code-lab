@@ -33,7 +33,33 @@ export interface QuizConfig {
   /** Called with the current XP after a passing attempt awards it, so the host
    *  can reflect it in its own UI. The component owns no XP label. */
   onXpChange?: (xp: number) => void;
+  /** Overridable UI strings for i18n. Any omitted key falls back to English. */
+  labels?: Partial<QuizLabels>;
   questions: QuizQuestion[];
+}
+
+/** Every chrome string the Quiz view renders. Templates use {name} placeholders
+ *  (n/m = question counts, score/total/needed = grading, xp = award). Overridable
+ *  for i18n; any omitted key keeps the English default. */
+export interface QuizLabels {
+  knowledgeCheck: string;
+  submit: string;
+  retry: string;
+  continue: string;
+  progressPassed: string;
+  progressFresh: string;
+  progressScored: string;
+  answerAll: string;
+  stillNeeds: string;
+  correctPrefix: string;
+  notQuitePrefix: string;
+  passTitle: string;
+  failTitle: string;
+  scoredLine: string;
+  passTail: string;
+  failTail: string;
+  xpLine: string;
+  courseXp: string;
 }
 
 export interface DrawnOption {

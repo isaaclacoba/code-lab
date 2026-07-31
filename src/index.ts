@@ -138,6 +138,7 @@ export type {
   QuizQuestion,
   QuizPlan,
   QuizResult,
+  QuizLabels,
   DrawnQuestion,
   DrawnOption,
 } from "./core/quiz-model.js";
