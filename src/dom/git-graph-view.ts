@@ -1,0 +1,419 @@
+// GitGraph: the animated view of a git commit-DAG. It paints a `RepoState` and
+// nothing more - all the geometry comes from the DOM-free `layout()` in
+// `src/core/git-layout.ts`, and all the git semantics from `src/core/git-model.ts`.
+// The view only turns those into SVG nodes/edges, HTML ref chips, and the
+// three-zone working area, and animates the DELTA between two states.
+//
+// Orientation is HORIZONTAL (Learn-Git-Branching style): time flows left->right
+// (x = layout column), branches stack in rows (y = lane). One colour per lane; a
+// merge dips to a branch row on a smooth cubic and rejoins. Everything is
+// re-derived on `setState`; only elements that are NEW versus the previous render
+// get the gentle ~400ms fade/slide, so a merge draws just its dot + two edges and
+// the rest of the graph stays put. The HEAD pill is a persistent element that
+// glides to its commit. All motion collapses to instant under
+// `prefers-reduced-motion` (handled in CSS).
+
+import type { RepoState, Hash } from "../core/git-model.js";
+import { layout } from "../core/git-layout.js";
+import type { LayoutNode } from "../core/git-layout.js";
+import { svgEl } from "./svg.js";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+// Grid -> pixel scale. Gaps chosen to read like the ratified mockup (~120x~90)
+// with a little extra room so ref chips above a lower lane clear the labels of
+// the lane above it.
+const COL_GAP = 128;
+const ROW_GAP = 112;
+const PAD_X = 64;
+const PAD_TOP = 76;
+const LABEL_BELOW = 54;
+const NODE_R = 10;
+
+// Fallback lane palette (lane0 indigo, lane1 teal, then cycle). Emitted as
+// `var(--clg-lane-N, <hex>)` so a course theme can re-point each lane while the
+// widget still works standalone.
+const LANE_FALLBACK = ["#6366f1", "#14b8a6", "#f97316", "#a855f7", "#0ea5e9", "#e11d48"];
+
+/** A ref/HEAD label anchored to a commit, used by the click delegate. */
+export interface GitGraphInspect {
+  commit?: Hash;
+  ref?: string;
+}
+
+type InspectHandler = (p: GitGraphInspect) => void;
+type Zone = "tree" | "index" | "repo";
+
+/** The CSS custom-property reference for a lane's colour (0-based). */
+function laneVar(lane: number): string {
+  const n = LANE_FALLBACK.length;
+  const i = ((lane % n) + n) % n;
+  return `var(--clg-lane-${i}, ${LANE_FALLBACK[i]})`;
+}
+
+/** The commit HEAD resolves to, or null when the branch is unborn. */
+function headCommit(state: RepoState): Hash | null {
+  if (state.head.kind === "detached") return state.head.commit;
+  return state.refs.get(state.head.name) ?? null;
+}
+
+export class GitGraph {
+  private root!: HTMLElement;
+  private graphWrap!: HTMLElement;
+  private svg!: SVGSVGElement;
+  private chipLayer!: HTMLElement;
+  private headEl!: HTMLElement;
+  private zoneBodies!: Record<Zone, HTMLElement>;
+
+  private state: RepoState | null = null;
+  private readonly handlers: InspectHandler[] = [];
+
+  // Diff bookkeeping across renders, so only NEW nodes/edges animate.
+  private prevNodeIds = new Set<Hash>();
+  private prevEdgeKeys = new Set<string>();
+  private prevZoneOf = new Map<string, Zone>();
+
+  // --- lifecycle ---------------------------------------------------------
+
+  mount(host: HTMLElement, opts: { state: RepoState }): void {
+    this.root = document.createElement("div");
+    this.root.className = "cl-git";
+
+    this.graphWrap = document.createElement("div");
+    this.graphWrap.className = "cl-git-graph";
+
+    this.svg = document.createElementNS(SVG_NS, "svg") as SVGSVGElement;
+    this.svg.setAttribute("class", "cl-git-svg");
+
+    this.chipLayer = document.createElement("div");
+    this.chipLayer.className = "cl-git-chips";
+
+    this.headEl = document.createElement("button");
+    this.headEl.setAttribute("type", "button");
+    this.headEl.className = "cl-git-chip is-head";
+    this.headEl.textContent = "HEAD";
+    this.headEl.dataset.ref = "HEAD";
+    this.headEl.hidden = true;
+
+    this.graphWrap.append(this.svg, this.chipLayer, this.headEl);
+    this.root.append(this.graphWrap, this.buildWorkArea());
+
+    this.root.addEventListener("click", this.onClick);
+    host.appendChild(this.root);
+
+    this.state = opts.state;
+    this.render(false);
+  }
+
+  setState(state: RepoState, opts?: { animate?: boolean }): void {
+    this.state = state;
+    this.render(opts?.animate ?? false);
+  }
+
+  on(event: "inspect", handler: InspectHandler): void {
+    if (event === "inspect") this.handlers.push(handler);
+  }
+
+  destroy(): void {
+    this.root.removeEventListener("click", this.onClick);
+    this.handlers.length = 0;
+    this.root.remove();
+  }
+
+  // --- event delegation --------------------------------------------------
+
+  private readonly onClick = (ev: Event): void => {
+    const target = ev.target as HTMLElement | null;
+    if (!target || typeof target.closest !== "function") return;
+    const refEl = target.closest("[data-ref]") as HTMLElement | null;
+    if (refEl) {
+      this.emit({ ref: refEl.dataset.ref });
+      return;
+    }
+    const commitEl = target.closest("[data-commit]") as HTMLElement | SVGElement | null;
+    if (commitEl) this.emit({ commit: (commitEl as HTMLElement).dataset?.commit });
+  };
+
+  private emit(p: GitGraphInspect): void {
+    for (const h of this.handlers) h(p);
+  }
+
+  // --- render ------------------------------------------------------------
+
+  private render(animate: boolean): void {
+    const state = this.state;
+    if (!state) return;
+    const g = layout(state);
+
+    const laneOf = new Map<Hash, number>();
+    const posOf = new Map<Hash, { x: number; y: number }>();
+    for (const node of g.nodes) {
+      laneOf.set(node.id, node.y);
+      posOf.set(node.id, this.px(node));
+    }
+
+    const width = PAD_X * 2 + Math.max(0, g.width - 1) * COL_GAP;
+    const height = PAD_TOP + Math.max(0, g.height - 1) * ROW_GAP + LABEL_BELOW;
+    this.svg.setAttribute("width", String(width));
+    this.svg.setAttribute("height", String(height));
+    this.svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    this.graphWrap.style.width = `${width}px`;
+    this.graphWrap.style.height = `${height}px`;
+
+    const newNodeIds = new Set<Hash>();
+    const newEdgeKeys = new Set<string>();
+
+    this.svg.replaceChildren();
+    this.drawEdges(g.edges, posOf, laneOf, animate, newEdgeKeys);
+    this.drawNodes(g.nodes, state, animate, newNodeIds);
+
+    this.drawChips(g.chips.filter((c) => c.kind !== "head"), posOf, laneOf);
+    this.placeHead(g.chips.find((c) => c.kind === "head"), posOf, animate);
+
+    this.renderZones(state, animate);
+
+    this.prevNodeIds = newNodeIds;
+    this.prevEdgeKeys = newEdgeKeys;
+  }
+
+  private px(node: LayoutNode): { x: number; y: number } {
+    return { x: PAD_X + node.x * COL_GAP, y: PAD_TOP + node.y * ROW_GAP };
+  }
+
+  private drawEdges(
+    edges: { from: Hash; to: Hash }[],
+    posOf: Map<Hash, { x: number; y: number }>,
+    laneOf: Map<Hash, number>,
+    animate: boolean,
+    newEdgeKeys: Set<string>,
+  ): void {
+    for (const edge of edges) {
+      const child = posOf.get(edge.from);
+      const parent = posOf.get(edge.to);
+      if (!child || !parent) continue;
+      const key = `${edge.from}>${edge.to}`;
+      newEdgeKeys.add(key);
+      const branchLane = Math.max(laneOf.get(edge.from) ?? 0, laneOf.get(edge.to) ?? 0);
+
+      let d: string;
+      if (child.y === parent.y) {
+        d = `M${parent.x},${parent.y} L${child.x},${child.y}`;
+      } else {
+        const midX = (parent.x + child.x) / 2;
+        d = `M${parent.x},${parent.y} C${midX},${parent.y} ${midX},${child.y} ${child.x},${child.y}`;
+      }
+
+      const isNew = animate && !this.prevEdgeKeys.has(key);
+      const path = svgEl("path", {
+        d,
+        class: isNew ? "cl-git-edge cl-git-edge-draw" : "cl-git-edge",
+        stroke: laneVar(branchLane),
+        fill: "none",
+        pathLength: 1,
+      });
+      this.svg.appendChild(path);
+    }
+  }
+
+  private drawNodes(
+    nodes: LayoutNode[],
+    state: RepoState,
+    animate: boolean,
+    newNodeIds: Set<Hash>,
+  ): void {
+    for (const node of nodes) {
+      newNodeIds.add(node.id);
+      const { x, y } = this.px(node);
+      const isNew = animate && !this.prevNodeIds.has(node.id);
+      const group = svgEl("g", {
+        class: isNew ? "cl-git-node cl-git-appear" : "cl-git-node",
+        "data-commit": node.id,
+      });
+      group.appendChild(
+        svgEl("circle", {
+          cx: x,
+          cy: y,
+          r: NODE_R,
+          class: "cl-git-dot",
+          fill: "var(--clg-node, #fff)",
+          stroke: laneVar(node.y),
+          "stroke-width": 3,
+        }),
+      );
+      const hash = svgEl("text", { x, y: y + 26, class: "cl-git-hash", "text-anchor": "middle" });
+      hash.textContent = node.id;
+      group.appendChild(hash);
+
+      const commit = state.commits.get(node.id);
+      const msg = svgEl("text", { x, y: y + 41, class: "cl-git-msg", "text-anchor": "middle" });
+      msg.textContent = commit?.message ?? "";
+      group.appendChild(msg);
+
+      this.svg.appendChild(group);
+    }
+  }
+
+  private drawChips(
+    chips: { label: string; kind: "branch" | "tag" | "head"; commit: Hash }[],
+    posOf: Map<Hash, { x: number; y: number }>,
+    laneOf: Map<Hash, number>,
+  ): void {
+    this.chipLayer.replaceChildren();
+    const byCommit = new Map<Hash, typeof chips>();
+    for (const chip of chips) {
+      const bucket = byCommit.get(chip.commit) ?? [];
+      bucket.push(chip);
+      byCommit.set(chip.commit, bucket);
+    }
+
+    for (const [commit, bucket] of byCommit) {
+      const pos = posOf.get(commit);
+      if (!pos) continue;
+      const stack = document.createElement("div");
+      stack.className = "cl-git-chipstack";
+      stack.style.left = `${pos.x}px`;
+      stack.style.top = `${pos.y - 30}px`;
+      for (const chip of bucket) {
+        const pill = document.createElement("button");
+        pill.type = "button";
+        pill.className = `cl-git-chip is-${chip.kind}`;
+        pill.textContent = chip.label;
+        if (chip.kind === "branch") {
+          pill.style.background = laneVar(laneOf.get(commit) ?? 0);
+          pill.dataset.ref = `refs/heads/${chip.label}`;
+        } else {
+          pill.dataset.ref = `refs/tags/${chip.label}`;
+        }
+        stack.appendChild(pill);
+      }
+      this.chipLayer.appendChild(stack);
+    }
+  }
+
+  private placeHead(
+    head: { commit: Hash; on?: string } | undefined,
+    posOf: Map<Hash, { x: number; y: number }>,
+    animate: boolean,
+  ): void {
+    if (!head) {
+      this.headEl.hidden = true;
+      return;
+    }
+    const pos = posOf.get(head.commit);
+    if (!pos) {
+      this.headEl.hidden = true;
+      return;
+    }
+    // On an un-animated update, suppress the glide so the pill snaps into place.
+    if (!animate) {
+      this.headEl.style.transition = "none";
+    }
+    this.headEl.hidden = false;
+    this.headEl.dataset.ref = "HEAD";
+    this.headEl.dataset.on = head.on ?? "";
+    this.headEl.title = head.on ? `HEAD -> ${head.on}` : "HEAD (detached)";
+    this.headEl.classList.toggle("is-detached", head.on === undefined);
+    this.headEl.style.left = `${pos.x}px`;
+    this.headEl.style.top = `${pos.y - 54}px`;
+    if (!animate) {
+      // Force a reflow so the "none" transition takes effect before restoring.
+      void this.headEl.offsetWidth;
+      this.headEl.style.transition = "";
+    }
+  }
+
+  // --- working area ------------------------------------------------------
+
+  private buildWorkArea(): HTMLElement {
+    const work = document.createElement("div");
+    work.className = "cl-git-work";
+
+    const tree = this.zone("tree", "Working tree");
+    const staging = this.zone("index", "Staging");
+    const repo = this.zone("repo", "Repository");
+
+    work.append(
+      tree.wrap,
+      this.arrow("git add"),
+      staging.wrap,
+      this.arrow("git commit"),
+      repo.wrap,
+    );
+
+    this.zoneBodies = { tree: tree.body, index: staging.body, repo: repo.body };
+    return work;
+  }
+
+  private zone(kind: Zone, title: string): { wrap: HTMLElement; body: HTMLElement } {
+    const wrap = document.createElement("div");
+    wrap.className = `cl-git-zone is-${kind}`;
+    const head = document.createElement("h3");
+    head.textContent = title;
+    const body = document.createElement("div");
+    body.className = "cl-git-zone-body";
+    wrap.append(head, body);
+    return { wrap, body };
+  }
+
+  private arrow(label: string): HTMLElement {
+    const arrow = document.createElement("div");
+    arrow.className = "cl-git-arrow";
+    const kbd = document.createElement("span");
+    kbd.className = "cl-git-kbd";
+    kbd.textContent = label;
+    arrow.append(kbd, document.createTextNode("\u2192"));
+    return arrow;
+  }
+
+  private renderZones(state: RepoState, animate: boolean): void {
+    const tree = [...state.worktree.keys()].sort();
+    const staged = [...state.index.keys()].sort();
+    const committed = this.reachablePaths(state);
+    for (const p of tree) committed.delete(p);
+    for (const p of staged) committed.delete(p);
+    const repo = [...committed].sort();
+
+    const nextZoneOf = new Map<string, Zone>();
+    this.fillZone("tree", tree, nextZoneOf, animate);
+    this.fillZone("index", staged, nextZoneOf, animate);
+    this.fillZone("repo", repo, nextZoneOf, animate);
+    this.prevZoneOf = nextZoneOf;
+  }
+
+  private fillZone(zone: Zone, paths: string[], nextZoneOf: Map<string, Zone>, animate: boolean): void {
+    const body = this.zoneBodies[zone];
+    body.replaceChildren();
+    for (const path of paths) {
+      nextZoneOf.set(path, zone);
+      const moved = animate && this.prevZoneOf.get(path) !== zone;
+      const row = document.createElement("div");
+      row.className = moved ? "cl-git-file is-moved" : "cl-git-file";
+      const dot = document.createElement("span");
+      dot.className = "cl-git-fdot";
+      const name = document.createElement("span");
+      name.className = "cl-git-fname";
+      name.textContent = path;
+      row.append(dot, name);
+      body.appendChild(row);
+    }
+  }
+
+  /** Union of `paths` over every commit reachable from HEAD (empty when unborn). */
+  private reachablePaths(state: RepoState): Set<string> {
+    const start = headCommit(state);
+    const paths = new Set<string>();
+    if (start === null) return paths;
+    const seen = new Set<Hash>();
+    const stack = [start];
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const commit = state.commits.get(id);
+      if (!commit) continue;
+      for (const p of commit.paths) paths.add(p);
+      for (const parent of commit.parents) stack.push(parent);
+    }
+    return paths;
+  }
+}

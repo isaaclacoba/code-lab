@@ -15,6 +15,12 @@ export type { IframeRunnerConfig, RoslynIframeRunnerConfig, TraceOutcome } from 
 export { MemoryViz } from "./dom/memory-viz.js";
 export { VizLab } from "./dom/viz-lab.js";
 export type { VizLabConfig, VizLevel } from "./dom/viz-lab.js";
+
+export { GitGraph } from "./dom/git-graph-view.js";
+export type { GitGraphInspect } from "./dom/git-graph-view.js";
+export type { RepoState, Hash, Commit, RefName, Head } from "./core/git-model.js";
+export type { GraphLayout, LayoutNode, LayoutEdge, LayoutChip } from "./core/git-layout.js";
+export { layout as gitLayout } from "./core/git-layout.js";
 export type {
   MemoryVizConfig,
   MemoryScene,

@@ -1148,3 +1148,136 @@
    page DOM, so a plain class rule reaches them. */
 .monaco-editor .cl-vl-pcline { background: rgba(63, 157, 134, 0.28); box-shadow: inset 3px 0 0 #3f9d86; }
 .monaco-editor .cl-vl-pcline-gutter { background: #3f9d86; width: 3px !important; margin-left: 2px; }
+
+/* ------------------------------------------------------------- GitGraph */
+/* The commit-DAG visual: a horizontal graph (SVG dots + edges + labels), ref/HEAD
+   chips overlaid in HTML, and a three-zone working area. All class names are
+   namespaced under cl-git. The widget owns its palette as --clg-* custom
+   properties (light defaults from the ratified mockup) so a course theme can
+   re-point them without touching the view. */
+.cl-git {
+  --clg-bg: #f8fafc;
+  --clg-node: #fff;
+  --clg-ink: #1f2430;
+  --clg-muted: #6b7280;
+  --clg-line: #cbd5e1;
+  --clg-lane-0: #6366f1;
+  --clg-lane-1: #14b8a6;
+  --clg-lane-2: #f97316;
+  --clg-lane-3: #a855f7;
+  --clg-lane-4: #0ea5e9;
+  --clg-lane-5: #e11d48;
+  --clg-tag: #f59e0b;
+  --clg-head: #111827;
+  --clg-mod: #f59e0b;
+  --clg-staged: #22c55e;
+  --clg-committed: #94a3b8;
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  color: var(--clg-ink);
+  line-height: 1.5;
+  display: grid;
+  gap: 20px;
+}
+
+/* --- graph --- */
+.cl-git .cl-git-graph { position: relative; }
+.cl-git .cl-git-svg { display: block; overflow: visible; }
+.cl-git .cl-git-edge { stroke-width: 2.5; fill: none; }
+.cl-git .cl-git-node { cursor: pointer; }
+.cl-git .cl-git-dot { transition: filter 0.15s; }
+.cl-git .cl-git-node:hover .cl-git-dot { filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.5)); }
+.cl-git .cl-git-hash { font: 11.5px/1 var(--cl-mono, ui-monospace, Menlo, monospace); fill: var(--clg-muted); }
+.cl-git .cl-git-msg { font-size: 12px; fill: var(--clg-ink); }
+
+/* --- ref/HEAD chips (HTML overlay over the SVG) --- */
+.cl-git .cl-git-chips { position: absolute; inset: 0; pointer-events: none; }
+.cl-git .cl-git-chipstack {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: flex;
+  gap: 5px;
+  pointer-events: none;
+}
+.cl-git .cl-git-chip {
+  font: 600 11px/1.4 system-ui, sans-serif;
+  color: #fff;
+  border: 0;
+  border-radius: 9px;
+  padding: 3px 8px;
+  cursor: pointer;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+.cl-git .cl-git-chip.is-tag { background: var(--clg-tag); }
+.cl-git .cl-git-chip.is-head {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: var(--clg-head);
+  z-index: 2;
+  transition: left 0.4s ease, top 0.4s ease;
+}
+.cl-git .cl-git-chip:hover { filter: brightness(1.08); }
+
+/* --- three-zone working area --- */
+.cl-git .cl-git-work { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+.cl-git .cl-git-zone {
+  border: 1.5px dashed var(--clg-line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-width: 130px;
+}
+.cl-git .cl-git-zone h3 {
+  font-size: 12px;
+  margin: 0 0 8px;
+  color: var(--clg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cl-git .cl-git-zone-body:empty::after {
+  content: "\2014";
+  color: var(--clg-committed);
+  font-size: 12px;
+}
+.cl-git .cl-git-file {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: 12.5px var(--cl-mono, ui-monospace, Menlo, monospace);
+  margin: 5px 0;
+}
+.cl-git .cl-git-fdot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--clg-committed); }
+.cl-git .cl-git-zone.is-tree .cl-git-fdot { background: var(--clg-mod); }
+.cl-git .cl-git-zone.is-index .cl-git-fdot { background: var(--clg-staged); }
+.cl-git .cl-git-zone.is-repo .cl-git-fdot { background: var(--clg-committed); }
+.cl-git .cl-git-arrow {
+  align-self: center;
+  color: var(--clg-muted);
+  font-size: 13px;
+  text-align: center;
+  min-width: 66px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cl-git .cl-git-kbd {
+  font: 12px var(--cl-mono, ui-monospace, Menlo, monospace);
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 5px;
+}
+
+/* --- animation: gentle ~400ms fade+slide for what is NEW --- */
+.cl-git .cl-git-appear { animation: clg-appear 0.4s ease both; }
+.cl-git .cl-git-edge-draw { stroke-dasharray: 1; animation: clg-draw 0.4s ease both; }
+.cl-git .cl-git-file.is-moved { animation: clg-slide 0.4s ease both; }
+@keyframes clg-appear { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes clg-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes clg-slide { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+
+/* Motion collapses to instant for users who ask for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .cl-git .cl-git-appear,
+  .cl-git .cl-git-edge-draw,
+  .cl-git .cl-git-file.is-moved { animation: none; }
+  .cl-git .cl-git-chip.is-head { transition: none; }
+}
