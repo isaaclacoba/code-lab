@@ -117,7 +117,7 @@ function cloneState(s: RepoState): RepoState {
 }
 
 /** The commit HEAD currently points at, or null if the branch is unborn. */
-function headCommit(s: RepoState): Hash | null {
+export function headCommit(s: RepoState): Hash | null {
   if (s.head.kind === "detached") return s.head.commit;
   return s.refs.get(s.head.name) ?? null;
 }
@@ -271,6 +271,25 @@ export function stage(state: RepoState, paths: string[]): OpResult {
     s.worktree.delete(p);
   }
   return { state: s, effect: { kind: "none" } };
+}
+
+/** git commit --amend: replace the HEAD commit with a new one that keeps the
+ *  original parents and folds in whatever is staged, then move the branch. The
+ *  old commit is left dangling (unreachable), exactly like real git. */
+export function amend(state: RepoState, message?: string): OpResult {
+  const s = cloneState(state);
+  const h = headCommit(s);
+  if (h === null) throw new GitError("You do not have anything to amend.");
+  const old = s.commits.get(h)!;
+  const parents = old.parents;
+  const paths = [...new Set([...old.paths, ...s.index.keys()])];
+  const msg = message ?? old.message;
+  const id = makeHash(parents, msg, s.seq);
+  s.seq += 1;
+  s.commits.set(id, { id, parents, message: msg, paths });
+  moveHead(s, id);
+  s.index.clear();
+  return { state: s, effect: { kind: "commit", id } };
 }
 
 /** git reset <paths>: the inverse of `git add`. Each path leaves the index and

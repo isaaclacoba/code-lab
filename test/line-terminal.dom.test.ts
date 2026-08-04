@@ -331,3 +331,25 @@ test("onCommand still fires when a shell is wired up", () => {
   term.destroy();
   host.remove();
 });
+
+test("a shell and an onCommand handler never both run the same line", () => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const seen: Counter[] = [];
+  const observed: string[] = [];
+  const term = new LineTerminal<Counter>();
+  term.mount(host, {
+    shell: countingShell(),
+    state: { n: 0 },
+    onState: (state) => seen.push(state),
+    onCommand: (line) => observed.push(line),
+  });
+  const input = host.querySelector(".cl-term-input") as HTMLInputElement;
+  input.value = "bump";
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+  // Running both paths would count the line twice - two commits per `git commit`.
+  assert.deepEqual(seen.map((s) => s.n), [1], "the shell ran the line exactly once");
+  assert.deepEqual(observed, ["bump"], "onCommand still observes it exactly once");
+  host.remove();
+});

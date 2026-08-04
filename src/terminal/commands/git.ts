@@ -19,6 +19,8 @@ import {
   init,
   stage,
   unstage,
+  amend,
+  headCommit,
   commit,
   branch,
   tag,
@@ -185,76 +187,11 @@ function unknownText(sub: string): string {
   return near ? `${head}\n\nThe most similar command is\n\t${near}` : head;
 }
 
-// --- pure helpers (mirrors of git-model internals we cannot import) --------
-
-/** The commit HEAD resolves to, or null when the branch is unborn. */
-function headCommit(s: RepoState): Hash | null {
-  if (s.head.kind === "detached") return s.head.commit;
-  return s.refs.get(s.head.name) ?? null;
-}
+// --- pure helpers ---------------------------------------------------------
 
 /** The short branch name HEAD is on, or null when detached. */
 function currentBranch(s: RepoState): string | null {
   return s.head.kind === "branch" ? s.head.name.replace("refs/heads/", "") : null;
-}
-
-/** FNV-1a 32-bit, matching git-model's hash so an amended id looks native. */
-function fnv1a(str: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
-
-/** Deterministic 7-hex commit id (display-only), same preimage as git-model. */
-function makeHash(parents: Hash[], message: string, seq: number): Hash {
-  const preimage = parents.join(",") + "\n" + message + "\n" + seq;
-  return fnv1a(preimage).toString(16).padStart(8, "0").slice(0, 7);
-}
-
-/** Fresh Maps + head/merge; commit objects are immutable so they are reused. */
-function cloneState(s: RepoState): RepoState {
-  return {
-    commits: new Map(s.commits),
-    refs: new Map(s.refs),
-    head:
-      s.head.kind === "branch"
-        ? { kind: "branch", name: s.head.name }
-        : { kind: "detached", commit: s.head.commit },
-    index: new Map(s.index),
-    worktree: new Map(s.worktree),
-    merge: s.merge
-      ? { mergeHead: s.merge.mergeHead, conflicted: [...s.merge.conflicted] }
-      : undefined,
-    seq: s.seq,
-  };
-}
-
-/** Move HEAD's branch (or detached HEAD) to a commit. Mutates the clone. */
-function moveHead(s: RepoState, to: Hash): void {
-  if (s.head.kind === "branch") s.refs.set(s.head.name, to);
-  else s.head = { kind: "detached", commit: to };
-}
-
-/** git commit --amend: replace the HEAD commit with a new one that keeps the
- *  original parents and folds in whatever is staged, then move the branch. The
- *  old commit is left dangling (unreachable), exactly like real git. Pure. */
-function amend(state: RepoState, message?: string): { state: RepoState; effect: Effect } {
-  const s = cloneState(state);
-  const h = headCommit(s);
-  if (h === null) throw new GitError("You do not have anything to amend.");
-  const old = s.commits.get(h)!;
-  const parents = old.parents;
-  const paths = [...new Set([...old.paths, ...s.index.keys()])];
-  const msg = message ?? old.message;
-  const id = makeHash(parents, msg, s.seq);
-  s.seq += 1;
-  s.commits.set(id, { id, parents, message: msg, paths });
-  moveHead(s, id);
-  s.index.clear();
-  return { state: s, effect: { kind: "commit", id } };
 }
 
 // --- terminal-text builders ------------------------------------------------

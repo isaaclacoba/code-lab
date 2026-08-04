@@ -170,8 +170,15 @@ export class LineTerminal<S = unknown> {
     this.echo(line);
     this.history.push(line);
     if (line === "") return;
+    // A shell and an onCommand handler are alternatives, never both. Running
+    // both would execute every typed line TWICE - two commits per `git commit`.
+    // The shell wins when it is wired up; onCommand then only observes.
+    if (this.shell) {
+      this.dispatch(line);
+      this.onCommand?.(line);
+      return;
+    }
     this.onCommand?.(line);
-    this.dispatch(line);
   }
 
   /** Run the line through the shell, if there is one, and show what came back. */
