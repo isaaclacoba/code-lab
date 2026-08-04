@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { init, type RepoState } from "../src/core/git-model.ts";
-import { run, tokenize, type RunResult } from "../src/core/git-cli.ts";
+import { init, addFiles, type RepoState } from "../src/core/git-model.ts";
+import { run, type RunResult } from "../src/core/git-cli.ts";
+// Tokenizing belongs to the terminal shell now, not to git.
+import { tokenize } from "../src/terminal/shell.ts";
 
 // --- helpers ---------------------------------------------------------------
 
@@ -16,9 +18,14 @@ function runAll(lines: string[], start?: RepoState): RunResult {
   return last;
 }
 
+/** Seed paths as files in the folder (lesson setup), so `git add` finds them. */
+function withFiles(s: RepoState, ...paths: string[]): RepoState {
+  return addFiles(s, paths).state;
+}
+
 /** A repo with one root commit of a.txt; returns the state. */
 function repoWithOneCommit(): RepoState {
-  return runAll(["git add a.txt", 'git commit -m "first"'], init()).state;
+  return runAll(["git add a.txt", 'git commit -m "first"'], withFiles(init(), "a.txt")).state;
 }
 
 /** The commit HEAD resolves to, or null. */
@@ -65,7 +72,7 @@ test("the leading `git` is optional", () => {
 // --- add + status ----------------------------------------------------------
 
 test("git add stages a path with no output", () => {
-  const r = run("git add a.txt", init());
+  const r = run("git add a.txt", withFiles(init(), "a.txt"));
   assert.equal(r.output, "");
   assert.equal(r.effect.kind, "none");
   assert.equal(r.state.index.get("a.txt"), "staged");
@@ -104,7 +111,7 @@ test("status lists staged and unstaged changes", () => {
 // --- commit ----------------------------------------------------------------
 
 test("git commit -m prints the [branch (root-commit) hash] message line", () => {
-  const s = init();
+  const s = withFiles(init(), "a.txt");
   const r = runAll(["git add a.txt", 'git commit -m "first"'], s);
   assert.match(r.output, /^\[main \(root-commit\) [0-9a-f]{7}\] first$/);
   assert.equal(r.effect.kind, "commit");
@@ -115,7 +122,7 @@ test("git commit -m prints the [branch (root-commit) hash] message line", () => 
 test("a second commit is not a root-commit and chains the parent", () => {
   const s = repoWithOneCommit();
   const c1 = head(s)!;
-  const r = runAll(["git add b.txt", 'git commit -m "second"'], s);
+  const r = runAll(["git add b.txt", 'git commit -m "second"'], withFiles(s, "b.txt"));
   assert.match(r.output, /^\[main [0-9a-f]{7}\] second$/);
   assert.doesNotMatch(r.output, /root-commit/);
   const c2 = head(r.state)!;
@@ -124,7 +131,7 @@ test("a second commit is not a root-commit and chains the parent", () => {
 
 test("git commit with no -m message errors and leaves state unchanged", () => {
   const s = repoWithOneCommit();
-  const staged = run("git add b.txt", s).state;
+  const staged = run("git add b.txt", withFiles(s, "b.txt")).state;
   const r = run("git commit", staged);
   assert.ok(r.error);
   assert.equal(r.effect.kind, "none");
@@ -137,7 +144,7 @@ test("git commit --amend replaces HEAD, keeps parents, folds staged paths", () =
   const s = repoWithOneCommit();
   const c1 = head(s)!;
   const oldParents = s.commits.get(c1)!.parents; // root has no parents
-  const r = runAll(["git add extra.txt", 'git commit --amend -m "reworded"'], s);
+  const r = runAll(["git add extra.txt", 'git commit --amend -m "reworded"'], withFiles(s, "extra.txt"));
   const c1b = head(r.state)!;
   assert.notEqual(c1b, c1, "amend produces a new id");
   const c = r.state.commits.get(c1b)!;
@@ -209,7 +216,7 @@ test("detached status reports the detached hash", () => {
 test("git merge fast-forwards and prints Updating..Fast-forward", () => {
   let s = repoWithOneCommit();
   s = run("git switch -c feature", s).state;
-  s = runAll(["git add f.txt", 'git commit -m "feat"'], s).state;
+  s = runAll(["git add f.txt", 'git commit -m "feat"'], withFiles(s, "f.txt")).state;
   const featTip = head(s)!;
   s = run("git switch main", s).state;
   const r = run("git merge feature", s);
@@ -232,9 +239,9 @@ test("a clean 3-way merge makes a merge commit", () => {
   // main touches m.txt, feature touches f.txt -> disjoint -> clean merge
   let s = repoWithOneCommit();
   s = run("git switch -c feature", s).state;
-  s = runAll(["git add f.txt", 'git commit -m "feat"'], s).state;
+  s = runAll(["git add f.txt", 'git commit -m "feat"'], withFiles(s, "f.txt")).state;
   s = run("git switch main", s).state;
-  s = runAll(["git add m.txt", 'git commit -m "main work"'], s).state;
+  s = runAll(["git add m.txt", 'git commit -m "main work"'], withFiles(s, "m.txt")).state;
   const r = run("git merge feature", s);
   assert.equal(r.output, "Merge made by the 'ort' strategy.");
   assert.equal(r.effect.kind, "merge");
@@ -248,9 +255,9 @@ test("full conflict flow: merge -> CONFLICT -> add resolves -> commit makes merg
   // both sides touch app.js
   let s = repoWithOneCommit();
   s = run("git switch -c feature", s).state;
-  s = runAll(["git add app.js", 'git commit -m "feat edit"'], s).state;
+  s = runAll(["git add app.js", 'git commit -m "feat edit"'], withFiles(s, "app.js")).state;
   s = run("git switch main", s).state;
-  s = runAll(["git add app.js", 'git commit -m "main edit"'], s).state;
+  s = runAll(["git add app.js", 'git commit -m "main edit"'], withFiles(s, "app.js")).state;
 
   const conflict = run("git merge feature", s);
   assert.match(conflict.output, /CONFLICT \(content\): Merge conflict in app\.js/);
@@ -276,9 +283,9 @@ test("full conflict flow: merge -> CONFLICT -> add resolves -> commit makes merg
 test("git merge --abort clears the pending merge", () => {
   let s = repoWithOneCommit();
   s = run("git switch -c feature", s).state;
-  s = runAll(["git add app.js", 'git commit -m "feat"'], s).state;
+  s = runAll(["git add app.js", 'git commit -m "feat"'], withFiles(s, "app.js")).state;
   s = run("git switch main", s).state;
-  s = runAll(["git add app.js", 'git commit -m "main"'], s).state;
+  s = runAll(["git add app.js", 'git commit -m "main"'], withFiles(s, "app.js")).state;
   s = run("git merge feature", s).state;
   assert.ok(s.merge);
   const r = run("git merge --abort", s);
@@ -291,7 +298,7 @@ test("git merge --abort clears the pending merge", () => {
 test("git reset --hard moves HEAD and prints HEAD is now at", () => {
   const s = repoWithOneCommit();
   const c1 = head(s)!;
-  const s2 = runAll(["git add b.txt", 'git commit -m "second"'], s).state;
+  const s2 = runAll(["git add b.txt", 'git commit -m "second"'], withFiles(s, "b.txt")).state;
   const r = run(`git reset --hard ${c1}`, s2);
   assert.match(r.output, new RegExp(`^HEAD is now at ${c1} first$`));
   assert.equal(head(r.state), c1);
@@ -302,7 +309,7 @@ test("git reset --hard moves HEAD and prints HEAD is now at", () => {
 test("git reset --soft keeps staged files (visible in status)", () => {
   const s = repoWithOneCommit();
   const c1 = head(s)!;
-  const s2 = runAll(["git add b.txt", 'git commit -m "second"'], s).state;
+  const s2 = runAll(["git add b.txt", 'git commit -m "second"'], withFiles(s, "b.txt")).state;
   const r = run(`git reset --soft ${c1}`, s2);
   assert.equal(head(r.state), c1);
   // soft leaves the index alone; the second commit's paths are not re-staged,
@@ -315,9 +322,10 @@ test("git reset defaults to --mixed", () => {
   const s2 = { ...s, index: new Map([["z", "staged" as const]]) };
   const r = run("git reset", s2);
   assert.equal((r.effect as { mode: string }).mode, "mixed");
-  // mixed unstages: z moves from index to worktree
+  // mixed unstages: z moves from index back to the worktree, and since no
+  // commit ever recorded it, it lands there untracked.
   assert.equal(r.state.index.size, 0);
-  assert.equal(r.state.worktree.get("z"), "modified");
+  assert.equal(r.state.worktree.get("z"), "untracked");
 });
 
 // --- tag -------------------------------------------------------------------
@@ -335,7 +343,7 @@ test("git tag <name> creates a tag ref, bare git tag lists them", () => {
 
 test("git log --oneline lists commits newest-first with decorations", () => {
   const s = repoWithOneCommit();
-  const s2 = runAll(["git add b.txt", 'git commit -m "second"'], s).state;
+  const s2 = runAll(["git add b.txt", 'git commit -m "second"'], withFiles(s, "b.txt")).state;
   const s3 = run("git tag v1", s2).state;
   const lines = run("git log --oneline", s3).output.split("\n");
   assert.equal(lines.length, 2);
@@ -369,14 +377,14 @@ test("git rev-parse resolves HEAD to the full hash", () => {
 test("git rev-parse HEAD~1 walks the first parent", () => {
   const s = repoWithOneCommit();
   const c1 = head(s)!;
-  const s2 = runAll(["git add b.txt", 'git commit -m "second"'], s).state;
+  const s2 = runAll(["git add b.txt", 'git commit -m "second"'], withFiles(s, "b.txt")).state;
   assert.equal(run("git rev-parse HEAD~1", s2).output, c1);
 });
 
 test("git rev-list lists a range newest-first, one per line", () => {
   const s = repoWithOneCommit();
   const c1 = head(s)!;
-  const s2 = runAll(["git add b.txt", 'git commit -m "second"'], s).state;
+  const s2 = runAll(["git add b.txt", 'git commit -m "second"'], withFiles(s, "b.txt")).state;
   const c2 = head(s2)!;
   const out = run(`git rev-list ${c1}..${c2}`, s2).output;
   assert.equal(out, c2);
@@ -425,4 +433,45 @@ test("an empty line is a no-op", () => {
   assert.equal(r.output, "");
   assert.equal(r.effect.kind, "none");
   assert.equal(r.state, s);
+});
+
+test("git init keeps the files already sitting in the folder", () => {
+  const seeded = addFiles(init(), ["cat.txt"]).state;
+  const after = run("git init", seeded);
+  assert.equal(after.state.worktree.get("cat.txt"), "untracked");
+  // and the freshly-initialised repo can then add them
+  assert.equal(run("git add cat.txt", after.state).error, undefined);
+});
+
+test("git reset <file> unstages it, the way the status hint says", () => {
+  let s = addFiles(init(), ["cat.txt", "notes.md"]).state;
+  s = run("git add cat.txt notes.md", s).state;
+  const after = run("git reset notes.md", s);
+  assert.equal(after.error, undefined);
+  assert.equal(after.state.index.has("notes.md"), false, "unstaged");
+  assert.equal(after.state.worktree.get("notes.md"), "untracked", "back in the folder");
+  assert.equal(after.state.index.get("cat.txt"), "staged", "the other file is untouched");
+});
+
+test("git reset <commit> still moves HEAD rather than unstaging", () => {
+  let s = addFiles(init(), ["cat.txt", "notes.md"]).state;
+  s = run("git add cat.txt", s).state;
+  s = run('git commit -m "one"', s).state;
+  s = run("git add notes.md", s).state;
+  s = run('git commit -m "two"', s).state;
+
+  const after = run("git reset HEAD~1", s);
+  assert.equal(after.error, undefined);
+  // the undone commit's file comes back to the folder, so the undo is complete
+  assert.equal(after.state.worktree.get("notes.md"), "untracked");
+});
+
+test("git init in a repository that already exists keeps the history", () => {
+  let s = addFiles(init(), ["cat.txt"]).state;
+  s = run("git add cat.txt", s).state;
+  s = run('git commit -m "one"', s).state;
+
+  const again = run("git init", s);
+  assert.equal(again.state.commits.size, 1, "typing it twice must not wipe the work");
+  assert.match(again.output, /Reinitialized/);
 });

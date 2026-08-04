@@ -21,7 +21,7 @@
 // ghosts turning solid. Because the layout comes from the one union state, a
 // ghost can never disagree with its solid counterpart about lane or column.
 
-import type { RepoState, Hash } from "../core/git-model.js";
+import type { RepoState, Hash, WorktreeStatus } from "../core/git-model.js";
 import { layout } from "../core/git-layout.js";
 import type { LayoutNode } from "../core/git-layout.js";
 import { svgEl } from "./svg.js";
@@ -425,28 +425,39 @@ export class GitGraph {
   }
 
   private renderZones(state: RepoState, animate: boolean): void {
-    const tree = [...state.worktree.keys()].sort();
+    const tree = [...state.worktree.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([path, status]) => ({ path, status }));
     const staged = [...state.index.keys()].sort();
     const committed = this.reachablePaths(state);
-    for (const p of tree) committed.delete(p);
+    for (const f of tree) committed.delete(f.path);
     for (const p of staged) committed.delete(p);
     const repo = [...committed].sort();
 
     const nextZoneOf = new Map<string, Zone>();
     this.fillZone("tree", tree, nextZoneOf, animate);
-    this.fillZone("index", staged, nextZoneOf, animate);
-    this.fillZone("repo", repo, nextZoneOf, animate);
+    this.fillZone("index", staged.map((path) => ({ path })), nextZoneOf, animate);
+    this.fillZone("repo", repo.map((path) => ({ path })), nextZoneOf, animate);
     this.prevZoneOf = nextZoneOf;
   }
 
-  private fillZone(zone: Zone, paths: string[], nextZoneOf: Map<string, Zone>, animate: boolean): void {
+  private fillZone(
+    zone: Zone,
+    files: Array<{ path: string; status?: WorktreeStatus }>,
+    nextZoneOf: Map<string, Zone>,
+    animate: boolean,
+  ): void {
     const body = this.zoneBodies[zone];
     body.replaceChildren();
-    for (const path of paths) {
+    for (const { path, status } of files) {
       nextZoneOf.set(path, zone);
       const moved = animate && this.prevZoneOf.get(path) !== zone;
       const row = document.createElement("div");
-      row.className = moved ? "cl-git-file is-moved" : "cl-git-file";
+      row.className = "cl-git-file";
+      // In the working tree the two states must read apart: untracked is drawn
+      // as an outline (git is not watching it yet), modified as a normal chip.
+      if (status) row.classList.add(`is-${status}`);
+      if (moved) row.classList.add("is-moved");
       const dot = document.createElement("span");
       dot.className = "cl-git-fdot";
       const name = document.createElement("span");

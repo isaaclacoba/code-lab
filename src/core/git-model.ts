@@ -30,6 +30,12 @@ export type Head =
   | { kind: "branch"; name: RefName }
   | { kind: "detached"; commit: Hash };
 
+/** How a path sits in the working tree. `untracked` is a file that exists on
+ *  disk but git has never recorded; `modified` is a tracked file edited since
+ *  the last commit. Both genuinely live in the working tree, so they share one
+ *  map - there is no fourth zone. */
+export type WorktreeStatus = "modified" | "untracked";
+
 /** The whole repository state. Pure data; ops clone it. */
 export interface RepoState {
   /** All commits by id, in creation order (Map preserves insertion order). */
@@ -40,8 +46,9 @@ export interface RepoState {
   head: Head;
   /** The staging area: paths marked "staged" by `stage` (git add). */
   index: Map<string, "staged">;
-  /** Unstaged edits: paths marked "modified". */
-  worktree: Map<string, "modified">;
+  /** The working tree: files that exist but are not staged - either "modified"
+   *  (tracked, edited) or "untracked" (git is not watching it yet). */
+  worktree: Map<string, WorktreeStatus>;
   /** Set only mid-merge-conflict: the other side plus the paths still in conflict. */
   merge?: { mergeHead: Hash; conflicted: string[] };
   /** Monotonic commit counter, folded into every hash preimage. */
@@ -238,12 +245,45 @@ export function init(): RepoState {
   };
 }
 
-/** git add: mark each path staged and drop it from the worktree. */
+/** Lesson setup, NOT a git command: declare that these files exist in the
+ *  folder. Each lands in the working tree as "untracked" - git can see it but is
+ *  not watching it yet. Idempotent, and a path already staged or already
+ *  modified is left exactly as it is. */
+export function addFiles(state: RepoState, paths: string[]): OpResult {
+  const s = cloneState(state);
+  for (const p of paths) {
+    if (s.index.has(p) || s.worktree.has(p)) continue;
+    s.worktree.set(p, "untracked");
+  }
+  return { state: s, effect: { kind: "none" } };
+}
+
+/** git add: mark each path staged and drop it from the working tree. A path git
+ *  has never seen - not in the working tree, not already staged - is an error,
+ *  exactly as in real git. */
 export function stage(state: RepoState, paths: string[]): OpResult {
   const s = cloneState(state);
   for (const p of paths) {
+    if (!s.worktree.has(p) && !s.index.has(p)) {
+      throw new GitError(`fatal: pathspec '${p}' did not match any files`);
+    }
     s.index.set(p, "staged");
     s.worktree.delete(p);
+  }
+  return { state: s, effect: { kind: "none" } };
+}
+
+/** git reset <paths>: the inverse of `git add`. Each path leaves the index and
+ *  goes back to the folder - untracked if no reachable commit ever recorded it,
+ *  otherwise a modification you have not staged. A path that is not staged is
+ *  quietly left alone, exactly as in real git. */
+export function unstage(state: RepoState, paths: string[]): OpResult {
+  const s = cloneState(state);
+  const tracked = trackedPaths(s, headCommit(s));
+  for (const p of paths) {
+    if (!s.index.has(p)) continue;
+    s.index.delete(p);
+    s.worktree.set(p, tracked.has(p) ? "modified" : "untracked");
   }
   return { state: s, effect: { kind: "none" } };
 }
@@ -403,19 +443,47 @@ export function reset(
   targetRev: string,
 ): OpResult {
   const s = cloneState(state);
+  const before = headCommit(s);
   const target = revParse(s, targetRev);
   moveHead(s, target);
-  if (mode === "mixed") {
+  // A path that no reachable commit has ever recorded is untracked: unstaging it
+  // makes it untracked again, not "modified".
+  const tracked = trackedPaths(s, target);
+  // Moving HEAD back does not evaporate the work those commits held. The files
+  // they recorded come BACK to where the mode says: staged for --soft, sitting
+  // in the folder for --mixed. That is what makes reset an undo you can act on.
+  const undone = before ? changedPaths(s, before, target) : new Set<string>();
+  const restingStatus = (p: string): WorktreeStatus => (tracked.has(p) ? "modified" : "untracked");
+
+  if (mode === "soft") {
+    for (const p of undone) s.index.set(p, "staged");
+  } else if (mode === "mixed") {
     // staged changes become unstaged; worktree otherwise unchanged
-    for (const p of s.index.keys()) s.worktree.set(p, "modified");
+    for (const p of s.index.keys()) s.worktree.set(p, restingStatus(p));
     s.index.clear();
+    for (const p of undone) s.worktree.set(p, restingStatus(p));
   } else if (mode === "hard") {
-    // discard everything not committed
+    // Throw away staged and tracked-but-uncommitted work. What git never had
+    // in a commit is not git's to delete - real `git reset --hard` leaves an
+    // untracked file sitting on disk, including one you had merely `git add`ed.
+    const staged = [...s.index.keys()];
     s.index.clear();
-    s.worktree.clear();
+    for (const [path, status] of [...s.worktree]) {
+      if (status !== "untracked") s.worktree.delete(path);
+    }
+    for (const path of staged) {
+      if (!tracked.has(path)) s.worktree.set(path, "untracked");
+    }
+    // --hard is the destructive one: the undone commits' files are simply gone.
+    for (const path of undone) if (!tracked.has(path)) s.worktree.delete(path);
   }
-  // soft: index + worktree untouched
   return { state: s, effect: { kind: "reset", mode, to: target } };
+}
+
+/** Every path recorded by a commit reachable from `tip` - i.e. everything git
+ *  already knows about at that point in history. */
+function trackedPaths(s: RepoState, tip: Hash | null): Set<string> {
+  return tip ? changedPaths(s, tip, null) : new Set<string>();
 }
 
 /** git rev-parse. Resolves HEAD/@, a branch, a tag, a (short) hash, and the

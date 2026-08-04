@@ -6,13 +6,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import "./setup-dom.ts";
-import { init, stage, commit, checkout, merge, type RepoState } from "../src/core/git-model.ts";
+import { init, addFiles, stage, commit, checkout, merge, type RepoState } from "../src/core/git-model.ts";
 import { GitGraph } from "../src/dom/git-graph-view.ts";
 
 // --- helpers ---------------------------------------------------------------
 
 function commitFiles(s: RepoState, message: string, paths: string[]): RepoState {
-  return commit(stage(s, paths).state, message).state;
+  return commit(stage(addFiles(s, paths).state, paths).state, message).state;
 }
 
 function head(s: RepoState): string | null {

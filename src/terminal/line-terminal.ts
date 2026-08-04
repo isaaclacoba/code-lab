@@ -1,11 +1,18 @@
-// LineTerminal: a small, dependency-free single-line console.
+// LineTerminal: the VIEW of the terminal module - a small, dependency-free
+// single-line console.
 //
-// It is a TYPING SURFACE and nothing else. The learner types a line, presses
-// Enter, and the widget hands the trimmed text to `onCommand`; the caller does
-// the actual work (parse it, run it, move a graph) and calls `write()` with the
-// result. The widget knows nothing about git, or about any other command set -
-// that separation is the whole point, and it is why this is not xterm.js: we
-// need a few hundred lines we fully control, not a terminal emulator.
+// It owns typing, echoing, scrollback, and history recall. It owns no commands.
+// There are two ways to give it something to do, and both are supported:
+//
+//   - `onCommand` - the widget hands you the trimmed line and you do the work,
+//     calling `write()` with the result. This is the original contract.
+//   - `shell` + `state` - the widget runs the line through a `Shell`, prints the
+//     result itself, obeys a `clear` effect, and reports the new state through
+//     `onState` so the host can repaint whatever the command changed.
+//
+// Either way the widget knows nothing about git, or about any other command set;
+// that separation is the whole point, and it is why this is not xterm.js: we need
+// a few hundred lines we fully control.
 //
 // The live prompt is a real `<input>`, not a contenteditable or a key-capturing
 // div. That buys a native caret, native selection, native IME, and a normal Tab
@@ -16,37 +23,50 @@
 // Scrollback lines are appended as text nodes (never innerHTML): command output
 // is untrusted text and must not be able to inject markup.
 
-import { CommandHistory } from "../core/terminal-history.js";
+import { CommandHistory } from "./history.js";
+import type { Shell, ShellResult } from "./shell.js";
 
 /** How a scrollback line reads: normal output, an error, a caution, a success. */
 export type LineKind = "out" | "err" | "warn" | "good";
 
-export interface LineTerminalOptions {
+export interface LineTerminalOptions<S = unknown> {
   /** The prompt shown before the live line and before each echoed command. */
   prompt?: string;
   /** Lines printed into the scrollback at mount time (a banner, a hint). */
   intro?: string[];
   /** Called with the trimmed line when the learner presses Enter. Never called
-   *  for a blank line. */
-  onCommand: (line: string) => void;
+   *  for a blank line. Fires whether or not a `shell` is wired up. */
+  onCommand?: (line: string) => void;
+  /** Run each entered line through this shell and print the result. */
+  shell?: Shell<S>;
+  /** The state handed to the shell; replaced by whatever a command returns. */
+  state?: S;
+  /** Called after every shell run, with the new state and the full result. */
+  onState?: (state: S, result: ShellResult<S>) => void;
 }
 
 const DEFAULT_PROMPT = "$";
 
-export class LineTerminal {
+export class LineTerminal<S = unknown> {
   private root: HTMLElement | null = null;
   private scroll: HTMLElement | null = null;
   private input: HTMLInputElement | null = null;
 
   private prompt = DEFAULT_PROMPT;
   private onCommand: ((line: string) => void) | null = null;
+  private shell: Shell<S> | null = null;
+  private state!: S;
+  private onState: ((state: S, result: ShellResult<S>) => void) | null = null;
   private readonly history = new CommandHistory();
 
   // --- lifecycle ---------------------------------------------------------
 
-  mount(host: HTMLElement, opts: LineTerminalOptions): void {
+  mount(host: HTMLElement, opts: LineTerminalOptions<S>): void {
     this.prompt = opts.prompt ?? DEFAULT_PROMPT;
-    this.onCommand = opts.onCommand;
+    this.onCommand = opts.onCommand ?? null;
+    this.shell = opts.shell ?? null;
+    this.state = opts.state as S;
+    this.onState = opts.onState ?? null;
 
     const root = document.createElement("div");
     root.className = "cl-term";
@@ -93,6 +113,8 @@ export class LineTerminal {
     this.scroll = null;
     this.input = null;
     this.onCommand = null;
+    this.shell = null;
+    this.onState = null;
     this.history.reset();
   }
 
@@ -147,7 +169,20 @@ export class LineTerminal {
     if (this.input) this.input.value = "";
     this.echo(line);
     this.history.push(line);
-    if (line !== "") this.onCommand?.(line);
+    if (line === "") return;
+    this.onCommand?.(line);
+    this.dispatch(line);
+  }
+
+  /** Run the line through the shell, if there is one, and show what came back. */
+  private dispatch(line: string): void {
+    const shell = this.shell;
+    if (!shell) return;
+    const result = shell.run(line, this.state);
+    if (isClear(result.effect)) this.clear();
+    if (result.output !== "") this.write(result.output, result.error ? "err" : "out");
+    this.state = result.state;
+    this.onState?.(result.state, result);
   }
 
   /** Put a recalled entry on the live line, caret at the end. `null` means the
@@ -197,4 +232,8 @@ export class LineTerminal {
     if (sel && sel.toString() !== "") return;
     this.focus();
   };
+}
+
+function isClear(effect: unknown): boolean {
+  return typeof effect === "object" && effect !== null && (effect as { kind?: unknown }).kind === "clear";
 }

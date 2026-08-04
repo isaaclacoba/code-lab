@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import "./setup-dom.ts";
-import { LineTerminal } from "../src/dom/line-terminal.ts";
-import { CommandHistory } from "../src/core/terminal-history.ts";
+import { LineTerminal } from "../src/terminal/line-terminal.ts";
+import { Shell } from "../src/terminal/shell.ts";
 
 // --- helpers ---------------------------------------------------------------
 
@@ -222,41 +222,112 @@ test("write and clear are safe before mount and after destroy", () => {
   h.host.remove();
 });
 
-// --- history ring (pure logic) --------------------------------------------
+// --- wired to a shell ------------------------------------------------------
 
-test("CommandHistory keeps entries in order and skips blanks and repeats", () => {
-  const hist = new CommandHistory();
-  hist.push("one");
-  hist.push("one");
-  hist.push("  ");
-  hist.push("two");
-  assert.deepEqual([...hist.entries], ["one", "two"]);
+interface Counter {
+  n: number;
+}
+
+function countingShell(): Shell<Counter> {
+  return new Shell<Counter>().register({
+    name: "bump",
+    summary: "Add one to the counter.",
+    run: (argv, state) => {
+      const by = Number(argv[0] ?? 1);
+      if (Number.isNaN(by)) return { state, output: `bump: not a number: ${argv[0]}`, error: true };
+      const next = { n: state.n + by };
+      return { state: next, output: `n=${next.n}` };
+    },
+  });
+}
+
+function mountShell(): {
+  host: HTMLElement;
+  term: LineTerminal<Counter>;
+  input: HTMLInputElement;
+  seen: Counter[];
+  lines(): string[];
+  enter(line: string): void;
+} {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const seen: Counter[] = [];
+  const term = new LineTerminal<Counter>();
+  term.mount(host, {
+    shell: countingShell(),
+    state: { n: 0 },
+    onState: (state) => seen.push(state),
+  });
+  const input = host.querySelector(".cl-term-input") as HTMLInputElement;
+  return {
+    host,
+    term,
+    input,
+    seen,
+    lines: () => Array.from(host.querySelectorAll(".cl-term-line")).map((el) => el.textContent ?? ""),
+    enter: (line) => {
+      input.value = line;
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    },
+  };
+}
+
+test("a mounted shell runs the line, prints the output, and reports the new state", () => {
+  const h = mountShell();
+  h.enter("bump 2");
+  h.enter("bump");
+  assert.deepEqual(h.lines(), ["$ bump 2", "n=2", "$ bump", "n=3"]);
+  assert.deepEqual(h.seen, [{ n: 2 }, { n: 3 }]);
+  h.term.destroy();
+  h.host.remove();
 });
 
-test("CommandHistory drops the oldest entry past its limit", () => {
-  const hist = new CommandHistory(2);
-  hist.push("a");
-  hist.push("b");
-  hist.push("c");
-  assert.deepEqual([...hist.entries], ["b", "c"]);
+test("shell errors are written as error lines", () => {
+  const h = mountShell();
+  h.enter("bump nope");
+  h.enter("nope");
+  const kinds = Array.from(h.host.querySelectorAll(".cl-term-line")).map((el) => el.className);
+  assert.deepEqual(kinds, [
+    "cl-term-line is-cmd",
+    "cl-term-line is-err",
+    "cl-term-line is-cmd",
+    "cl-term-line is-err",
+  ]);
+  assert.equal(h.lines()[3], "nope: command not found");
+  h.term.destroy();
+  h.host.remove();
 });
 
-test("CommandHistory returns null at both ends of the walk", () => {
-  const hist = new CommandHistory();
-  assert.equal(hist.prev("draft"), null);
-  assert.equal(hist.next(), null);
-  hist.push("a");
-  assert.equal(hist.prev("draft"), "a");
-  assert.equal(hist.prev("draft"), null);
-  assert.equal(hist.next(), "draft");
-  assert.equal(hist.next(), null);
+test("the clear effect wipes the scrollback, and the state survives it", () => {
+  const h = mountShell();
+  h.enter("bump");
+  h.enter("clear");
+  assert.deepEqual(h.lines(), []);
+  h.enter("bump");
+  assert.deepEqual(h.lines(), ["$ bump", "n=2"]);
+  h.term.destroy();
+  h.host.remove();
 });
 
-test("CommandHistory pushing resets the walk position", () => {
-  const hist = new CommandHistory();
-  hist.push("a");
-  hist.push("b");
-  hist.prev("");
-  hist.push("c");
-  assert.equal(hist.prev(""), "c");
+test("a blank line never reaches the shell", () => {
+  const h = mountShell();
+  h.enter("   ");
+  assert.deepEqual(h.lines(), ["$"]);
+  assert.deepEqual(h.seen, []);
+  h.term.destroy();
+  h.host.remove();
+});
+
+test("onCommand still fires when a shell is wired up", () => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const typed: string[] = [];
+  const term = new LineTerminal<Counter>();
+  term.mount(host, { shell: countingShell(), state: { n: 0 }, onCommand: (line) => typed.push(line) });
+  const input = host.querySelector(".cl-term-input") as HTMLInputElement;
+  input.value = "bump";
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  assert.deepEqual(typed, ["bump"]);
+  term.destroy();
+  host.remove();
 });

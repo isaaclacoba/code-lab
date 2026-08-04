@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   GitError,
   init,
+  addFiles,
   stage,
   commit,
   branch,
@@ -19,9 +20,9 @@ import {
 
 // --- helpers ---------------------------------------------------------------
 
-/** Stage the given paths then commit, returning the new state. */
+/** Seed the paths as files in the folder, stage them, then commit. */
 function commitFiles(s: RepoState, message: string, paths: string[]): RepoState {
-  return commit(stage(s, paths).state, message).state;
+  return commit(stage(addFiles(s, paths).state, paths).state, message).state;
 }
 
 /** The commit HEAD resolves to, or null when unborn. */
@@ -43,7 +44,7 @@ test("init makes an unborn main branch with no refs", () => {
 });
 
 test("the first commit is born with empty parents and clears the index", () => {
-  const staged = stage(init(), ["a.txt"]);
+  const staged = stage(addFiles(init(), ["a.txt"]).state, ["a.txt"]);
   assert.equal(staged.state.index.get("a.txt"), "staged");
   const r = commit(staged.state, "first");
   assert.equal(r.effect.kind, "commit");
@@ -64,10 +65,83 @@ test("stage removes a path from the worktree", () => {
   let s = init();
   s = commitFiles(s, "c1", ["a.txt"]);
   // simulate an unstaged edit, then stage it
-  s = { ...s, worktree: new Map([["a.txt", "modified"]]) };
+  s = { ...s, worktree: new Map([["a.txt", "modified"]]) } as RepoState;
   const r = stage(s, ["a.txt"]);
   assert.equal(r.state.worktree.has("a.txt"), false);
   assert.equal(r.state.index.get("a.txt"), "staged");
+});
+
+// --- files that exist but git is not tracking yet --------------------------
+
+test("addFiles seeds each path into the working tree as untracked", () => {
+  const r = addFiles(init(), ["cat.txt", "dog.txt", "notes.md"]);
+  assert.deepEqual(
+    [...r.state.worktree.entries()].sort(),
+    [["cat.txt", "untracked"], ["dog.txt", "untracked"], ["notes.md", "untracked"]],
+  );
+  assert.equal(r.state.index.size, 0, "seeding a file does not stage it");
+  assert.equal(r.effect.kind, "none");
+});
+
+test("addFiles is idempotent and does not mutate the input", () => {
+  const s0 = init();
+  const once = addFiles(s0, ["cat.txt"]).state;
+  const twice = addFiles(once, ["cat.txt", "cat.txt"]).state;
+  assert.equal(twice.worktree.size, 1);
+  assert.equal(twice.worktree.get("cat.txt"), "untracked");
+  assert.equal(s0.worktree.size, 0, "the input state is untouched");
+  assert.notEqual(once.worktree, s0.worktree, "worktree Map is a fresh instance");
+});
+
+test("addFiles leaves a staged or a modified path exactly as it is", () => {
+  let s = addFiles(init(), ["cat.txt"]).state;
+  s = stage(s, ["cat.txt"]).state;
+  s = { ...s, worktree: new Map([["dog.txt", "modified"]]) } as RepoState;
+
+  const r = addFiles(s, ["cat.txt", "dog.txt"]).state;
+  assert.equal(r.index.get("cat.txt"), "staged", "a staged path stays staged");
+  assert.equal(r.worktree.has("cat.txt"), false, "and does not reappear in the tree");
+  assert.equal(r.worktree.get("dog.txt"), "modified", "a modified path is not downgraded");
+});
+
+test("stage moves an untracked path into the index and out of the working tree", () => {
+  const s = addFiles(init(), ["cat.txt", "dog.txt"]).state;
+  const r = stage(s, ["cat.txt"]).state;
+  assert.equal(r.index.get("cat.txt"), "staged");
+  assert.equal(r.worktree.has("cat.txt"), false);
+  assert.equal(r.worktree.get("dog.txt"), "untracked", "the unchosen file stays put");
+});
+
+test("stage of a path git has never seen throws the pathspec error", () => {
+  const s = addFiles(init(), ["cat.txt"]).state;
+  assert.throws(
+    () => stage(s, ["nope.txt"]),
+    (e: unknown) =>
+      e instanceof GitError &&
+      e.message === "fatal: pathspec 'nope.txt' did not match any files",
+  );
+  assert.throws(() => stage(init(), ["cat.txt"]), GitError, "an empty folder has nothing to add");
+});
+
+test("staging an already-staged path is fine", () => {
+  let s = addFiles(init(), ["cat.txt"]).state;
+  s = stage(s, ["cat.txt"]).state;
+  const r = stage(s, ["cat.txt"]).state;
+  assert.equal(r.index.get("cat.txt"), "staged");
+  assert.equal(r.index.size, 1);
+});
+
+test("commit takes exactly the index; untracked files stay in the working tree", () => {
+  let s = addFiles(init(), ["cat.txt", "dog.txt", "notes.md"]).state;
+  s = stage(s, ["cat.txt"]).state;
+  const r = commit(s, "just the cat").state;
+  const id = head(r)!;
+  assert.deepEqual(r.commits.get(id)!.paths, ["cat.txt"]);
+  assert.equal(r.index.size, 0);
+  assert.deepEqual(
+    [...r.worktree.entries()].sort(),
+    [["dog.txt", "untracked"], ["notes.md", "untracked"]],
+  );
 });
 
 // --- linear history --------------------------------------------------------
@@ -262,8 +336,8 @@ test("reset --soft/--mixed/--hard differ in index and worktree", () => {
   const c1 = head(s)!;
   s = commitFiles(s, "c2", ["b"]);
   // now stage something and leave an unstaged edit
-  s = stage(s, ["staged.txt"]).state;
-  s = { ...s, worktree: new Map([["dirty.txt", "modified"]]) };
+  s = stage(addFiles(s, ["staged.txt"]).state, ["staged.txt"]).state;
+  s = { ...s, worktree: new Map([["dirty.txt", "modified"]]) } as RepoState;
 
   const soft = reset(s, "soft", c1);
   assert.equal(soft.effect.kind, "reset");
@@ -274,12 +348,35 @@ test("reset --soft/--mixed/--hard differ in index and worktree", () => {
 
   const mixed = reset(s, "mixed", c1);
   assert.equal(mixed.state.index.size, 0, "mixed unstages the index");
-  assert.equal(mixed.state.worktree.get("staged.txt"), "modified", "mixed moves staged -> worktree");
+  assert.equal(mixed.state.worktree.get("staged.txt"), "untracked", "unstaging a never-committed file leaves it untracked");
   assert.equal(mixed.state.worktree.get("dirty.txt"), "modified", "mixed keeps other worktree edits");
 
   const hard = reset(s, "hard", c1);
   assert.equal(hard.state.index.size, 0, "hard clears the index");
-  assert.equal(hard.state.worktree.size, 0, "hard clears the worktree");
+  assert.equal(hard.state.worktree.get("dirty.txt"), undefined, "hard throws away tracked edits");
+  assert.equal(hard.state.worktree.get("staged.txt"), "untracked", "hard does not delete an untracked file");
+});
+
+test("neither --mixed nor --hard deletes an untracked file", () => {
+  let s = init();
+  s = commitFiles(s, "c1", ["a"]);
+  const c1 = head(s)!;
+  s = commitFiles(s, "c2", ["b"]);
+  s = stage(addFiles(s, ["staged.txt"]).state, ["staged.txt"]).state;
+  s = addFiles(s, ["notes.md"]).state;
+
+  const mixed = reset(s, "mixed", c1);
+  assert.equal(mixed.state.index.size, 0, "mixed still unstages the index");
+  assert.equal(mixed.state.worktree.get("staged.txt"), "untracked", "never committed, so it goes back to untracked");
+  assert.equal(mixed.state.worktree.get("notes.md"), "untracked", "an untracked file is left alone");
+
+  // Real `git reset --hard` throws away YOUR uncommitted changes to files git
+  // tracks. A file git never knew about is not git's to delete - which matters
+  // here, because a lesson seeds its folder as untracked files.
+  const hard = reset(s, "hard", c1);
+  assert.equal(hard.state.index.size, 0, "hard still clears the index");
+  assert.equal(hard.state.worktree.get("notes.md"), "untracked", "hard leaves an untracked file alone");
+  assert.equal(hard.state.worktree.get("staged.txt"), "untracked", "an unstaged, never-committed file survives too");
 });
 
 // --- rev-parse -------------------------------------------------------------
@@ -406,7 +503,7 @@ test("ops do not mutate the input state", () => {
 
   const snapshotCommits = s1.commits.size;
   const snapshotRefs = new Map(s1.refs);
-  const r = commit(stage(s1, ["b"]).state, "c2");
+  const r = commit(stage(addFiles(s1, ["b"]).state, ["b"]).state, "c2");
   // s1 was cloned, not mutated
   assert.equal(s1.commits.size, snapshotCommits);
   assert.deepEqual([...s1.refs.entries()], [...snapshotRefs.entries()]);
@@ -415,8 +512,52 @@ test("ops do not mutate the input state", () => {
 });
 
 test("staging does not mutate the source index Map", () => {
-  const s = init();
+  const s = addFiles(init(), ["a"]).state;
   const r = stage(s, ["a"]);
   assert.equal(s.index.size, 0);
   assert.notEqual(r.state.index, s.index);
+});
+
+// --- reset as a usable undo ------------------------------------------------
+// Moving HEAD back must bring the undone commit's files back with it, or the
+// learner who commits the wrong thing has no way out but starting over.
+test("reset --soft brings the undone commit's files back to the index", () => {
+  let s = addFiles(init(), ["cat.txt", "notes.md"]).state;
+  s = stage(s, ["cat.txt"]).state;
+  s = commit(s, "keep").state;
+  const keep = head(s)!;
+  s = stage(s, ["notes.md"]).state;
+  s = commit(s, "oops").state;
+
+  const soft = reset(s, "soft", keep).state;
+  assert.equal(soft.index.get("notes.md"), "staged", "the undone file is staged again");
+  assert.equal(soft.worktree.has("notes.md"), false, "and it is not also loose in the folder");
+});
+
+test("reset --mixed puts the undone commit's files back in the folder", () => {
+  let s = addFiles(init(), ["cat.txt", "notes.md"]).state;
+  s = stage(s, ["cat.txt"]).state;
+  s = commit(s, "keep").state;
+  const keep = head(s)!;
+  s = stage(s, ["notes.md"]).state;
+  s = commit(s, "oops").state;
+
+  const mixed = reset(s, "mixed", keep).state;
+  assert.equal(mixed.index.size, 0, "nothing left staged");
+  // notes.md is in no remaining commit, so it is back to being untracked -
+  // exactly where it started, which is what makes the undo complete.
+  assert.equal(mixed.worktree.get("notes.md"), "untracked");
+});
+
+test("reset --hard throws the undone commit's files away", () => {
+  let s = addFiles(init(), ["cat.txt", "notes.md"]).state;
+  s = stage(s, ["cat.txt"]).state;
+  s = commit(s, "keep").state;
+  const keep = head(s)!;
+  s = stage(s, ["notes.md"]).state;
+  s = commit(s, "oops").state;
+
+  const hard = reset(s, "hard", keep).state;
+  assert.equal(hard.index.size, 0);
+  assert.equal(hard.worktree.has("notes.md"), false, "--hard is the destructive one");
 });

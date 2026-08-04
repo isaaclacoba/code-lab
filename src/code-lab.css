@@ -1170,6 +1170,7 @@
   --clg-tag: #f59e0b;
   --clg-head: #111827;
   --clg-mod: #f59e0b;
+  --clg-untracked: #94a3b8;
   --clg-staged: #22c55e;
   --clg-committed: #94a3b8;
   --clg-ghost-opacity: 0.26;
@@ -1252,6 +1253,20 @@
 .cl-git .cl-git-zone.is-tree .cl-git-fdot { background: var(--clg-mod); }
 .cl-git .cl-git-zone.is-index .cl-git-fdot { background: var(--clg-staged); }
 .cl-git .cl-git-zone.is-repo .cl-git-fdot { background: var(--clg-committed); }
+/* A file git is not watching yet: outline, not fill. The dashed ring and the
+   hollow dot say "present, but not recorded" without a word of prose. */
+.cl-git .cl-git-file.is-untracked {
+  border: 1px dashed var(--clg-untracked);
+  border-radius: 7px;
+  padding: 2px 7px;
+  margin: 5px 0 5px -8px;
+  color: var(--clg-muted);
+}
+.cl-git .cl-git-zone.is-tree .cl-git-file.is-untracked .cl-git-fdot {
+  box-sizing: border-box;
+  background: transparent;
+  border: 1.5px dashed var(--clg-untracked);
+}
 .cl-git .cl-git-arrow {
   align-self: center;
   color: var(--clg-muted);

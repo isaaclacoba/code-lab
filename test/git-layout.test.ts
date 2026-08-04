@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   init,
+  addFiles,
   stage,
   commit,
   branch,
@@ -14,9 +15,9 @@ import { layout, type GraphLayout } from "../src/core/git-layout.ts";
 
 // --- helpers ---------------------------------------------------------------
 
-/** Stage the given paths then commit, returning the new state. */
+/** Seed the paths as files in the folder, stage them, then commit. */
 function commitFiles(s: RepoState, message: string, paths: string[]): RepoState {
-  return commit(stage(s, paths).state, message).state;
+  return commit(stage(addFiles(s, paths).state, paths).state, message).state;
 }
 
 /** The commit HEAD resolves to, or null when unborn. */
