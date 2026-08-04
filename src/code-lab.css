@@ -333,13 +333,25 @@
   color: var(--cl-ink-soft);
 }
 
-/* Compile-error panel: capstone-quality output shared by every run surface. */
+/* Compile-error panel: capstone-quality output shared by every run surface.
+   One accent token drives the whole panel, so the advisory-warning variant is a
+   colour swap rather than a second copy of every rule. */
 .cl-errors {
+  --cl-err-accent: #9b2c2c;
+  --cl-err-accent-soft: rgba(155, 44, 44, 0.06);
+  --cl-err-prose: #7a3a12;
   border: 1px solid rgba(28, 29, 37, 0.15);
-  border-left: 4px solid #9b2c2c;
+  border-left: 4px solid var(--cl-err-accent);
   border-radius: 14px;
   padding: 0.9rem 1.1rem;
-  background: rgba(155, 44, 44, 0.06);
+  background: var(--cl-err-accent-soft);
+}
+
+/* The build succeeded: this is advice, not a stop sign. */
+.cl-errors--warning {
+  --cl-err-accent: #8a6100;
+  --cl-err-accent-soft: rgba(180, 130, 0, 0.08);
+  --cl-err-prose: #6b4b06;
 }
 
 .cl-errors h3 {
@@ -349,7 +361,7 @@
 
 .cl-errors-note {
   margin: 0 0 0.6rem;
-  color: #7a3a12;
+  color: var(--cl-err-prose);
   font-family: var(--cl-font-sans, "Space Grotesk", system-ui, sans-serif);
   font-size: 0.9rem;
 }
@@ -360,7 +372,7 @@
 }
 
 .cl-errors li {
-  color: #9b2c2c;
+  color: var(--cl-err-accent);
   font-family: var(--cl-font-mono, "IBM Plex Mono", "Consolas", monospace);
   font-size: 0.85rem;
   margin-bottom: 0.5rem;
@@ -371,7 +383,7 @@
   margin-bottom: 0.15rem;
   padding: 0.1rem 0.45rem;
   border-radius: 6px;
-  background: #9b2c2c;
+  background: var(--cl-err-accent);
   color: #fff;
   font-family: var(--cl-font-sans, "Space Grotesk", system-ui, sans-serif);
   font-weight: 700;
@@ -380,7 +392,7 @@
 
 .cl-error-friendly {
   display: block;
-  color: #7a3a12;
+  color: var(--cl-err-prose);
   font-family: var(--cl-font-sans, "Space Grotesk", system-ui, sans-serif);
   font-weight: 600;
   margin-bottom: 0.15rem;
@@ -389,6 +401,38 @@
 .cl-error-raw {
   display: block;
   opacity: 0.85;
+}
+
+/* Folded-away concept behind the message. Reads as a link, not a button, so it
+   never competes with the actions that actually run the code. */
+.cl-error-why-toggle {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cl-err-prose);
+  font-family: var(--cl-font-sans, "Space Grotesk", system-ui, sans-serif);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.cl-error-why-toggle:hover {
+  opacity: 0.75;
+}
+
+.cl-error-why {
+  margin: 0.35rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--cl-err-prose);
+  font-family: var(--cl-font-sans, "Space Grotesk", system-ui, sans-serif);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.5;
 }
 
 /* ------------------------------------------------------------- MemoryViz */

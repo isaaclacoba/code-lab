@@ -433,7 +433,7 @@ public static class Tracer
                 var pos = d.Location.GetLineSpan().StartLinePosition;
                 var line = d.Location.IsInSource ? pos.Line + 1 : (int?)null;
                 var col = d.Location.IsInSource ? pos.Character + 1 : (int?)null;
-                return new CompileError(line, col, null, d.GetMessage());
+                return new CompileError(line, col, CompilerService.FriendlyHint(d.Id), d.GetMessage(), CompilerService.WhyHint(d.Id));
             })
             .GroupBy(e => (e.Line, e.Raw))
             .Select(g => g.First())

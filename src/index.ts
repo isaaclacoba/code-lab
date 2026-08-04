@@ -155,6 +155,8 @@ export type {
   PlanState,
 } from "./core/planboard-model.js";
 export { resolvePlan, planProgress } from "./core/planboard-model.js";
+export type { RepoScene } from "./core/repo-scene.js";
+export { resolveRepo } from "./core/repo-scene.js";
 
 export type { CodeMark } from "./core/code-marks.js";
 export {
@@ -192,7 +194,7 @@ export type { LineFlags } from "./core/lines.js";
 export { presentRun, selectRunCode } from "./core/present.js";
 export type { RunPresentation, PresentLabels } from "./core/present.js";
 export { renderErrorPanel, showErrorPanel } from "./dom/error-panel.js";
-export type { ErrorPanelLabels } from "./dom/error-panel.js";
+export type { ErrorPanelLabels, ErrorPanelOptions } from "./dom/error-panel.js";
 export {
   makeTour,
   goTo,

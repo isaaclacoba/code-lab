@@ -1,4 +1,4 @@
-import type { CodeRunner, RunResult } from "../types.js";
+import type { CodeRunner, CompileError, RunResult } from "../types.js";
 import type { ExecTrace } from "../core/exec-tracer-model.js";
 
 /** What the host sends back for a trace request, before we parse the payload. */
@@ -6,7 +6,7 @@ interface TraceResponse {
   compiled: boolean;
   traceJson?: string | null;
   runtimeError?: string | null;
-  errors: { line?: number | null; friendly?: string | null; raw: string }[];
+  errors: CompileError[];
 }
 
 /** The parsed outcome of a trace: the ExecTrace when it compiled, plus the same
@@ -15,7 +15,7 @@ export interface TraceOutcome {
   compiled: boolean;
   trace?: ExecTrace;
   runtimeError?: string | null;
-  errors: { line?: number | null; friendly?: string | null; raw: string }[];
+  errors: CompileError[];
 }
 
 export interface IframeRunnerConfig {

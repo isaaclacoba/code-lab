@@ -9,6 +9,9 @@ export interface CompileError {
   friendly?: string;
   /** The raw compiler message. */
   raw: string;
+  /** The concept behind the message, revealed on request rather than up front
+   *  so the panel teaches the idea instead of only handing over the fix. */
+  why?: string;
 }
 
 export interface RunResult {
@@ -16,6 +19,9 @@ export interface RunResult {
   output: string;
   runtimeError?: string | null;
   errors: CompileError[];
+  /** Diagnostics that did not stop the build but almost certainly mean the code
+   *  does not do what its author intended. A run with warnings still succeeded. */
+  warnings?: CompileError[];
 }
 
 /** A pluggable compile/run backend. C# (Roslyn/WASM) ships today; any language

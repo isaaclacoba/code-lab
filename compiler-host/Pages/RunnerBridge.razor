@@ -22,9 +22,12 @@
     {
         var result = await Compiler.RunAsync(code ?? "");
         var errors = result.Errors
-            .Select(e => new RunError(e.Line, e.Friendly, e.Raw))
+            .Select(e => new RunError(e.Line, e.Friendly, e.Raw, e.Why))
             .ToList();
-        return new RunResult(result.Compiled, result.Output, result.RuntimeError, errors);
+        var warnings = result.Warnings
+            .Select(e => new RunError(e.Line, e.Friendly, e.Raw, e.Why))
+            .ToList();
+        return new RunResult(result.Compiled, result.Output, result.RuntimeError, errors, warnings);
     }
 
     [JSInvokable]
@@ -33,16 +36,16 @@
         await Compiler.InitAsync();
         var result = Tracer.Trace(code ?? "", Compiler.References);
         var errors = result.Errors
-            .Select(e => new RunError(e.Line, e.Friendly, e.Raw))
+            .Select(e => new RunError(e.Line, e.Friendly, e.Raw, e.Why))
             .ToList();
         return new TraceResponse(result.Compiled, result.TraceJson, result.RuntimeError, errors);
     }
 
     public void Dispose() => _ref?.Dispose();
 
-    public record RunError(int? Line, string? Friendly, string Raw);
+    public record RunError(int? Line, string? Friendly, string Raw, string? Why);
 
-    public record RunResult(bool Compiled, string Output, string? RuntimeError, List<RunError> Errors);
+    public record RunResult(bool Compiled, string Output, string? RuntimeError, List<RunError> Errors, List<RunError> Warnings);
 
     public record TraceResponse(bool Compiled, string? TraceJson, string? RuntimeError, List<RunError> Errors);
 }

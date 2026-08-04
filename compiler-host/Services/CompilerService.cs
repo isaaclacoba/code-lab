@@ -11,6 +11,11 @@ public class CompileResult
     public string Output { get; set; } = "";
     public string? RuntimeError { get; set; }
     public List<CompileError> Errors { get; set; } = new();
+
+    // Diagnostics that did NOT stop the build but almost always mean the code
+    // does not do what the writer thought. Kept apart from Errors so a run that
+    // compiles is never reported as a failure - these are read after the output.
+    public List<CompileError> Warnings { get; set; } = new();
 }
 
 public record CompileError(int? Line, int? Column, string? Friendly, string Raw, string? Why = null);
@@ -124,6 +129,8 @@ public class CompilerService
             };
         }
 
+        var warnings = ToErrors(emit.Diagnostics.Where(IsTeachingWarning));
+
         ms.Seek(0, SeekOrigin.Begin);
         var assembly = Assembly.Load(ms.ToArray());
         var entry = assembly.EntryPoint;
@@ -133,6 +140,7 @@ public class CompilerService
             {
                 Compiled = false,
                 Errors = { new CompileError(null, null, "Your program needs a Main method to run.", "No Main method was found to run.") },
+                Warnings = warnings,
             };
         }
 
@@ -153,6 +161,7 @@ public class CompilerService
                 Compiled = true,
                 Output = writer.ToString(),
                 RuntimeError = (ex.InnerException ?? ex).Message,
+                Warnings = warnings,
             };
         }
         finally
@@ -160,7 +169,7 @@ public class CompilerService
             Console.SetOut(originalOut);
         }
 
-        return new CompileResult { Compiled = true, Output = writer.ToString() };
+        return new CompileResult { Compiled = true, Output = writer.ToString(), Warnings = warnings };
     }
 
     private static List<CompileError> ToErrors(IEnumerable<Diagnostic> diagnostics)
@@ -179,7 +188,29 @@ public class CompilerService
             .Take(6)
             .ToList();
 
-    private static string? FriendlyHint(string diagnosticId) => diagnosticId switch
+    // Warnings worth interrupting a learner for. The bar is high on purpose: a
+    // wall of advisory noise teaches nothing, so this lists only diagnostics that
+    // mean "this line does not do what you think it does". Everything else stays
+    // hidden - the compiler is allowed to be quiet about style.
+    private static readonly HashSet<string> TeachingWarningIds = new()
+    {
+        "CS1717", // assignment made to same variable
+        "CS1718", // comparison made to same variable
+        "CS0162", // unreachable code detected
+        "CS0164", // label declared but never used
+        "CS0168", // variable declared but never used
+        "CS0169", // private field never used
+        "CS0219", // variable assigned but its value is never used
+        "CS0414", // private field assigned but its value is never used
+        "CS8618", // non-nullable field is uninitialised
+        "CS0472", // the result of the comparison is always the same
+        "CS0652", // comparison to integral constant is useless
+    };
+
+    private static bool IsTeachingWarning(Diagnostic d)
+        => d.Severity == DiagnosticSeverity.Warning && TeachingWarningIds.Contains(d.Id);
+
+    internal static string? FriendlyHint(string diagnosticId) => diagnosticId switch
     {
         "CS1002" => "Looks like a missing semicolon ( ; ) at the end of a statement.",
         "CS1513" => "Looks like a missing closing brace } somewhere.",
@@ -202,12 +233,20 @@ public class CompilerService
         "CS0407" => "The method's return type does not match what is expected here. Check the interface or delegate it must fit.",
         "CS0127" => "This method is declared to return nothing (void), but you wrote 'return' with a value. Either remove the value, or change the return type.",
         "CS0106" => "A modifier like 'public' or 'abstract' is not allowed in this place. Interface members do not need 'public', and 'abstract' belongs on the class, not here.",
+        "CS1718" => "Both sides of this comparison are the same thing, so the answer is always the same. One side was probably meant to be something else - a threshold, a limit, the other value you are comparing against.",
+        "CS1717" => "This assigns something to itself, which changes nothing. One of the two sides was probably meant to be a different name - this is what happens when a parameter and a field are spelled alike.",
+        "CS0162" => "This code can never run. Something above it always returns, breaks or throws first, so nothing below is reachable.",
+        "CS0472" or "CS0652" => "This comparison always gives the same answer, so the condition is not really deciding anything. Check the values on each side.",
+        "CS0219" => "This variable is given a value that is never read afterwards. Either it is left over from an earlier attempt, or the line that was supposed to use it is missing.",
+        "CS0168" => "This variable is declared but never used. Delete it, or use it.",
+        "CS0169" or "CS0414" => "This field is never read. An unused field is usually either dead weight to delete, or a sign that the code that should read it was never written.",
+        "CS8618" => "This field has no value until someone assigns one, so it starts as null and any use of it would crash. Give it a starting value, or set it in the constructor.",
         _ => null,
     };
 
     // The concept behind the error. Shown only when the learner opens "Learn why",
     // so it teaches the idea instead of just handing over the fix.
-    private static string? WhyHint(string diagnosticId) => diagnosticId switch
+    internal static string? WhyHint(string diagnosticId) => diagnosticId switch
     {
         "CS0201" => "Every statement in C# has to perform an action: store a value, call something, or build an object. Writing a value on its own (like 'passed ? \"PASS\" : \"FAIL\";') calculates an answer and then throws it away, which is almost always a mistake - so the compiler stops you. The two normal ways to USE a value are 'return value;' (hand it back to the caller) or, for a one-line method, the expression body 'Method() => value;'.",
         "CS0029" or "CS0030" or "CS0266" => "C# is statically typed: every variable, parameter and return value has a fixed type decided when you declare it. The compiler checks that the value you provide matches that type, BEFORE the program runs. A string and a bool are unrelated, so it refuses to mix them. The lesson: decide the type first, then make every value that flows into it match.",
@@ -215,6 +254,10 @@ public class CompilerService
         "CS0535" => "When a class says ': IMyInterface', it is signing the contract - promising to provide EVERY method the interface lists. Miss one, and the contract is broken, so the compiler refuses. Read the interface as a to-do list the class must complete.",
         "CS0161" => "A method with a return type (anything other than void) promises to give back a value on EVERY possible path through it. If an 'if' returns but the 'else' does not, one path breaks the promise. Make sure every branch ends in a return.",
         "CS0106" => "Interfaces and classes have different rules. Interface members are public by definition, so writing 'public' is redundant. 'abstract' describes a class that cannot be created directly - it belongs on the class declaration, not on members inside an interface.",
+        "CS1718" or "CS1717" or "CS0472" or "CS0652" => "The compiler cannot know what you MEANT, but it can see when a line cannot possibly be doing useful work. Comparing a value to itself is always true; assigning a value to itself changes nothing. The program still builds and still runs - it just quietly gives the same answer forever, which is far harder to spot than a crash. This is why a test that passes is not proof: 'hours >= hours' would pass any check that expects the answer it always gives.",
+        "CS0162" => "Every line you write is a claim that it should run. Unreachable code breaks that claim, and it is almost never deliberate - usually a return, break or throw above it happens earlier than intended, or an if/else covers more than it looks like it does. Read upwards from the dead line to find what always fires first.",
+        "CS0219" or "CS0168" or "CS0169" or "CS0414" => "Unused things are evidence. A variable or field that is written but never read means the code that was supposed to consume it is missing, or that a refactor left debris behind. Neither is harmless: the next reader has to work out whether it matters, and dead state is where stale, wrong values hide. Delete it or finish it - do not leave it.",
+        "CS8618" => "C# separates 'a reference that always points at something' from 'a reference that may be null'. A non-nullable field promises the first, so it has to be given a value by the time the constructor finishes. Leaving it unset breaks the promise and the compiler warns rather than letting a null crash surface much later, far from the cause.",
         _ => null,
     };
 }
