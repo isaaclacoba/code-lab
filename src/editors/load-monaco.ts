@@ -110,6 +110,21 @@ function registerCSharpCompletions(monaco: MonacoNamespace): void {
     { label: "method", insert: "public ${1:void} ${2:Name}()\n{\n    $0\n}", doc: "Method" },
     { label: "prop", insert: "public ${1:string} ${2:Name} { get; set; }", doc: "Auto property" },
     { label: "foreach", insert: "foreach (var ${1:item} in ${2:items})\n{\n    $0\n}", doc: "Foreach loop" },
+    // The course teaches design, not syntax recall. A learner who knows exactly
+    // which shape they want should never be stuck on how to spell it, so every
+    // control-flow construct the course uses has a skeleton here.
+    { label: "if", insert: "if (${1:condition})\n{\n    $0\n}", doc: "If statement" },
+    { label: "ifelse", insert: "if (${1:condition})\n{\n    $1\n}\nelse\n{\n    $0\n}", doc: "If / else" },
+    { label: "else", insert: "else\n{\n    $0\n}", doc: "Else block" },
+    { label: "elseif", insert: "else if (${1:condition})\n{\n    $0\n}", doc: "Else if" },
+    { label: "switch", insert: "switch (${1:value})\n{\n    case ${2:option}:\n        $0\n        break;\n    default:\n        break;\n}", doc: "Switch statement" },
+    { label: "case", insert: "case ${1:option}:\n    $0\n    break;", doc: "Switch case" },
+    { label: "for", insert: "for (int ${1:i} = 0; ${1:i} < ${2:count}; ${1:i}++)\n{\n    $0\n}", doc: "For loop" },
+    { label: "while", insert: "while (${1:condition})\n{\n    $0\n}", doc: "While loop" },
+    { label: "ternary", insert: "${1:condition} ? ${2:whenTrue} : ${0:whenFalse}", doc: "Conditional expression" },
+    { label: "trycatch", insert: "try\n{\n    $1\n}\ncatch (${2:Exception} ex)\n{\n    $0\n}", doc: "Try / catch" },
+    { label: "list", insert: "var ${1:items} = new List<${2:string}>();", doc: "New list" },
+    { label: "dict", insert: "var ${1:map} = new Dictionary<${2:string}, ${3:int}>();", doc: "New dictionary" },
   ];
 
   monaco.languages.registerCompletionItemProvider("csharp", {

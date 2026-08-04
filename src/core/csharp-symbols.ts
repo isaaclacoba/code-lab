@@ -11,7 +11,7 @@
 // block typing; when it cannot tell, it stays quiet rather than guessing loudly.
 
 export type TypeKind = "class" | "interface" | "record" | "struct" | "enum";
-export type MemberKind = "method" | "property" | "field" | "enumMember";
+export type MemberKind = "method" | "property" | "field" | "enumMember" | "constructor";
 
 export interface MemberSymbol {
   name: string;
@@ -141,7 +141,10 @@ function baseList(segment: string): string[] {
 
 /** A usable type name for completion purposes (strips generics/arrays/nullable). */
 function bareType(raw: string): string {
-  return raw.replace(/<.*>/, "").replace(/\[[\s,]*\]/g, "").replace(/\?$/, "").trim();
+  // Cut at the first `<` rather than matching a balanced `<...>`: a captured
+  // generic is often truncated mid-argument ("Dictionary<string,") and an
+  // unbalanced pair must still reduce to the bare name.
+  return raw.replace(/<[\s\S]*$/, "").replace(/\[[\s,]*\]/g, "").replace(/\?$/, "").trim();
 }
 
 // --- members inside one type body ------------------------------------------
@@ -172,16 +175,54 @@ function scanMembers(body: string): MemberSymbol[] {
   return members;
 }
 
+/** Index of the `=>` that opens an EXPRESSION BODY, or -1.
+ *
+ *  `public bool IsHungry() => _hours >= 4;` declares a method just as surely as
+ *  one with braces, and learners write them constantly - so a scanner that only
+ *  understands `{` reports the member as missing and the goal tracker calls a
+ *  correct answer wrong.
+ *
+ *  The arrow must be told apart from a LAMBDA stored in a field
+ *  (`Func<int, int> twice = value => value * 2;`), where the arrow belongs to
+ *  the initializer and the member is still a field. A top-level `=` reached
+ *  first means exactly that, so we stop and let the field branch have it.
+ *  Comparison operators (`==`, `!=`, `<=`, `>=`) are not assignments. */
+function expressionBodyArrow(text: string): number {
+  let depth = 0;
+  for (let i = 0; i < text.length - 1; i++) {
+    const c = text[i];
+    if (c === "(" || c === "[") { depth++; continue; }
+    if (c === ")" || c === "]") { depth = Math.max(0, depth - 1); continue; }
+    if (depth > 0) continue;
+    if (c !== "=") continue;
+    if (text[i + 1] === ">") return i;
+    const prev = text[i - 1];
+    if (text[i + 1] === "=" || prev === "=" || prev === "!" || prev === "<" || prev === ">") continue;
+    return -1; // a real assignment: this is an initializer, not an expression body
+  }
+  return -1;
+}
+
 /** Interpret one member-level statement. `blockFollows` = a `{` came next, so a
  *  method body or a property accessor list. */
 function takeDeclaration(
   stmt: string,
   push: (m: MemberSymbol) => void,
   blockFollows: boolean,
+  exprBody = false,
 ): void {
   const text = stmt.replace(/\s+/g, " ").trim();
   if (!text) return;
   if (/^\[/.test(text)) return; // attribute
+
+  // An expression-bodied member is its declaration plus `=> ...`. Drop the body
+  // and re-read the head, which now looks exactly like the braced form.
+  const arrow = expressionBodyArrow(text);
+  if (arrow > 0) {
+    takeDeclaration(text.slice(0, arrow), push, true, true);
+    return;
+  }
+
   const isStatic = /\bstatic\b/.test(text);
 
   // method: ... Ret Name(params)
@@ -198,9 +239,22 @@ function takeDeclaration(
       return;
     }
   }
-  // constructor: Modifiers Name(params) - no return type
+  // constructor: Modifiers Name(params) - no return type.
+  // Reported as a member so a goal tracker can ask "does Cat take its hours in
+  // a constructor yet?". Completion deliberately filters these back out: a
+  // constructor is never something you call on an instance.
   const ctor = text.match(/^(?:[a-z]+\s+)*([A-Z][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*$/);
-  if (ctor && blockFollows) return; // constructors are offered via the type name
+  if (ctor && blockFollows) {
+    const cname = ctor[1];
+    push({
+      name: cname,
+      kind: "constructor",
+      type: cname,
+      isStatic: false,
+      detail: `${cname}(${ctor[2].trim()})`,
+    });
+    return;
+  }
 
   // property: ... Type Name  (a block follows: { get; set; })
   if (blockFollows) {
@@ -209,7 +263,8 @@ function takeDeclaration(
       const name = prop[2];
       if (!NOT_A_DECLARATION.has(name) && !MODIFIERS.has(name) && !TYPE_KEYWORDS.has(name as TypeKind)) {
         const t = bareType(prop[1]);
-        push({ name, kind: "property", type: t, isStatic, detail: `${t} ${name} { get; set; }` });
+        const accessors = exprBody ? "{ get; }" : "{ get; set; }";
+        push({ name, kind: "property", type: t, isStatic, detail: `${t} ${name} ${accessors}` });
       }
     }
     return;
@@ -282,7 +337,9 @@ export function scanCSharp(source: string): CSharpSymbols {
 
   // Locals: `var x = new Dog()`, `Dog d = ...`, `Dog d;` anywhere.
   const seenVar = new Set<string>();
-  const varRe = /\bvar\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\s+([A-Za-z_][A-Za-z0-9_<>,.\[\]]*)/g;
+  // Stop at `(` OR `{`: a collection initializer (`new List<int> { 7, 5 }`) has
+  // no argument list, and `[` covers `new int[3]`.
+  const varRe = /\bvar\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\s+([A-Za-z_][A-Za-z0-9_<>,.\s]*?)\s*[({[]/g;
   while ((m = varRe.exec(src)) !== null) {
     if (!seenVar.has(m[1])) { seenVar.add(m[1]); vars.push({ name: m[1], type: bareType(m[2]) }); }
   }
@@ -319,18 +376,61 @@ export function receiverBefore(lineUpToCursor: string): string | null {
 
 /** Members to offer after `receiver.`, or null when the receiver is unknown -
  *  null means "say nothing", which is the honest answer for a heuristic. */
+// The handful of library types this course actually puts in a learner's hands.
+// Deliberately NOT an attempt to model the BCL - just enough that `items.` after
+// `new List<Cat>()` answers with `Add` and `Count` instead of silence. Anything
+// missing here is a prompt to add one line, not a reason to write a type system.
+const BUILTIN_MEMBERS: Record<string, MemberSymbol[]> = {
+  List: [
+    { name: "Add", kind: "method", type: "void", isStatic: false, detail: "void Add(T item)" },
+    { name: "Count", kind: "property", type: "int", isStatic: false, detail: "int Count" },
+    { name: "Remove", kind: "method", type: "bool", isStatic: false, detail: "bool Remove(T item)" },
+    { name: "RemoveAt", kind: "method", type: "void", isStatic: false, detail: "void RemoveAt(int index)" },
+    { name: "Contains", kind: "method", type: "bool", isStatic: false, detail: "bool Contains(T item)" },
+    { name: "IndexOf", kind: "method", type: "int", isStatic: false, detail: "int IndexOf(T item)" },
+    { name: "Insert", kind: "method", type: "void", isStatic: false, detail: "void Insert(int index, T item)" },
+    { name: "Clear", kind: "method", type: "void", isStatic: false, detail: "void Clear()" },
+    { name: "Sort", kind: "method", type: "void", isStatic: false, detail: "void Sort()" },
+  ],
+  Dictionary: [
+    { name: "Add", kind: "method", type: "void", isStatic: false, detail: "void Add(TKey key, TValue value)" },
+    { name: "Count", kind: "property", type: "int", isStatic: false, detail: "int Count" },
+    { name: "ContainsKey", kind: "method", type: "bool", isStatic: false, detail: "bool ContainsKey(TKey key)" },
+    { name: "TryGetValue", kind: "method", type: "bool", isStatic: false, detail: "bool TryGetValue(TKey key, out TValue value)" },
+    { name: "Remove", kind: "method", type: "bool", isStatic: false, detail: "bool Remove(TKey key)" },
+    { name: "Keys", kind: "property", isStatic: false, detail: "KeyCollection Keys" },
+    { name: "Values", kind: "property", isStatic: false, detail: "ValueCollection Values" },
+  ],
+  string: [
+    { name: "Length", kind: "property", type: "int", isStatic: false, detail: "int Length" },
+    { name: "ToUpper", kind: "method", type: "string", isStatic: false, detail: "string ToUpper()" },
+    { name: "ToLower", kind: "method", type: "string", isStatic: false, detail: "string ToLower()" },
+    { name: "Trim", kind: "method", type: "string", isStatic: false, detail: "string Trim()" },
+    { name: "Split", kind: "method", type: "string[]", isStatic: false, detail: "string[] Split(char separator)" },
+    { name: "Contains", kind: "method", type: "bool", isStatic: false, detail: "bool Contains(string value)" },
+    { name: "Replace", kind: "method", type: "string", isStatic: false, detail: "string Replace(string old, string New)" },
+    { name: "StartsWith", kind: "method", type: "bool", isStatic: false, detail: "bool StartsWith(string value)" },
+    { name: "EndsWith", kind: "method", type: "bool", isStatic: false, detail: "bool EndsWith(string value)" },
+    { name: "Substring", kind: "method", type: "string", isStatic: false, detail: "string Substring(int startIndex)" },
+  ],
+};
+
 export function membersOf(symbols: CSharpSymbols, receiver: string): MemberSymbol[] | null {
   if (!receiver) return null;
   const asType = symbols.types.find((t) => t.name === receiver);
   if (asType) {
     // A type name on the left reads static members (and every enum member).
-    const statics = asType.members.filter((mm) => mm.isStatic || mm.kind === "enumMember");
+    const statics = asType.members.filter(
+      (mm) => mm.kind !== "constructor" && (mm.isStatic || mm.kind === "enumMember"),
+    );
     return statics.length ? statics : null;
   }
   const v = symbols.vars.find((x) => x.name === receiver);
   if (!v || !v.type) return null;
   const t = symbols.types.find((x) => x.name === v.type);
-  if (!t) return null;
-  const instance = t.members.filter((mm) => !mm.isStatic && mm.kind !== "enumMember");
+  if (!t) return BUILTIN_MEMBERS[v.type] ?? null;
+  const instance = t.members.filter(
+    (mm) => !mm.isStatic && mm.kind !== "enumMember" && mm.kind !== "constructor",
+  );
   return instance.length ? instance : null;
 }
