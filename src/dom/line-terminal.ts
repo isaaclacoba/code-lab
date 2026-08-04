@@ -1,0 +1,200 @@
+// LineTerminal: a small, dependency-free single-line console.
+//
+// It is a TYPING SURFACE and nothing else. The learner types a line, presses
+// Enter, and the widget hands the trimmed text to `onCommand`; the caller does
+// the actual work (parse it, run it, move a graph) and calls `write()` with the
+// result. The widget knows nothing about git, or about any other command set -
+// that separation is the whole point, and it is why this is not xterm.js: we
+// need a few hundred lines we fully control, not a terminal emulator.
+//
+// The live prompt is a real `<input>`, not a contenteditable or a key-capturing
+// div. That buys a native caret, native selection, native IME, and a normal Tab
+// stop for free - a keyboard user is never trapped. It is styled to disappear
+// into the console, and the focus ring is drawn on the root via `:focus-within`
+// so focus stays visible.
+//
+// Scrollback lines are appended as text nodes (never innerHTML): command output
+// is untrusted text and must not be able to inject markup.
+
+import { CommandHistory } from "../core/terminal-history.js";
+
+/** How a scrollback line reads: normal output, an error, a caution, a success. */
+export type LineKind = "out" | "err" | "warn" | "good";
+
+export interface LineTerminalOptions {
+  /** The prompt shown before the live line and before each echoed command. */
+  prompt?: string;
+  /** Lines printed into the scrollback at mount time (a banner, a hint). */
+  intro?: string[];
+  /** Called with the trimmed line when the learner presses Enter. Never called
+   *  for a blank line. */
+  onCommand: (line: string) => void;
+}
+
+const DEFAULT_PROMPT = "$";
+
+export class LineTerminal {
+  private root: HTMLElement | null = null;
+  private scroll: HTMLElement | null = null;
+  private input: HTMLInputElement | null = null;
+
+  private prompt = DEFAULT_PROMPT;
+  private onCommand: ((line: string) => void) | null = null;
+  private readonly history = new CommandHistory();
+
+  // --- lifecycle ---------------------------------------------------------
+
+  mount(host: HTMLElement, opts: LineTerminalOptions): void {
+    this.prompt = opts.prompt ?? DEFAULT_PROMPT;
+    this.onCommand = opts.onCommand;
+
+    const root = document.createElement("div");
+    root.className = "cl-term";
+
+    const scroll = document.createElement("div");
+    scroll.className = "cl-term-scroll";
+    // A log region, not an alert: output is announced as it lands but does not
+    // interrupt what the learner is typing.
+    scroll.setAttribute("role", "log");
+    scroll.setAttribute("aria-live", "polite");
+    scroll.setAttribute("aria-label", "Terminal output");
+
+    const row = document.createElement("div");
+    row.className = "cl-term-row";
+    row.append(this.promptSpan());
+
+    const input = document.createElement("input");
+    input.className = "cl-term-input";
+    input.type = "text";
+    input.setAttribute("aria-label", "Terminal command");
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.setAttribute("autocapitalize", "off");
+    input.setAttribute("autocorrect", "off");
+    row.append(input);
+
+    root.append(scroll, row);
+    root.addEventListener("click", this.onRootClick);
+    input.addEventListener("keydown", this.onKeyDown);
+    host.appendChild(root);
+
+    this.root = root;
+    this.scroll = scroll;
+    this.input = input;
+
+    for (const line of opts.intro ?? []) this.write(line);
+  }
+
+  destroy(): void {
+    this.root?.removeEventListener("click", this.onRootClick);
+    this.input?.removeEventListener("keydown", this.onKeyDown);
+    this.root?.remove();
+    this.root = null;
+    this.scroll = null;
+    this.input = null;
+    this.onCommand = null;
+    this.history.reset();
+  }
+
+  // --- public API --------------------------------------------------------
+
+  /** Append output to the scrollback. Embedded newlines become separate lines,
+   *  so a caller can hand over a whole command result in one call. */
+  write(text: string, kind: LineKind = "out"): void {
+    if (!this.scroll) return;
+    for (const line of String(text).split("\n")) {
+      const el = document.createElement("div");
+      el.className = `cl-term-line is-${kind}`;
+      el.textContent = line;
+      this.scroll.appendChild(el);
+    }
+    this.scrollToEnd();
+  }
+
+  /** Wipe the scrollback. The prompt line, its text, and focus are untouched. */
+  clear(): void {
+    if (this.scroll) this.scroll.textContent = "";
+  }
+
+  focus(): void {
+    this.input?.focus();
+  }
+
+  // --- input -------------------------------------------------------------
+
+  private readonly onKeyDown = (ev: KeyboardEvent): void => {
+    const input = this.input;
+    if (!input) return;
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      this.submit(input.value);
+      return;
+    }
+    if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      this.recall(this.history.prev(input.value));
+      return;
+    }
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      this.recall(this.history.next());
+    }
+    // Everything else - Tab included - keeps its native behaviour.
+  };
+
+  private submit(raw: string): void {
+    const line = raw.trim();
+    if (this.input) this.input.value = "";
+    this.echo(line);
+    this.history.push(line);
+    if (line !== "") this.onCommand?.(line);
+  }
+
+  /** Put a recalled entry on the live line, caret at the end. `null` means the
+   *  walk hit an end, so the line stays as it is. */
+  private recall(value: string | null): void {
+    const input = this.input;
+    if (!input || value === null) return;
+    input.value = value;
+    const end = value.length;
+    if (typeof input.setSelectionRange === "function") input.setSelectionRange(end, end);
+  }
+
+  // --- rendering helpers -------------------------------------------------
+
+  /** Echo what was entered into the scrollback, so the transcript reads like a
+   *  real session. A blank line echoes a bare prompt. */
+  private echo(line: string): void {
+    if (!this.scroll) return;
+    const el = document.createElement("div");
+    el.className = "cl-term-line is-cmd";
+    el.append(this.promptSpan());
+    // A literal space, not a margin: the line is `pre-wrap`, so copying the
+    // transcript yields `$ git status` rather than `$git status`.
+    el.append(document.createTextNode(line === "" ? "" : ` ${line}`));
+    this.scroll.appendChild(el);
+    this.scrollToEnd();
+  }
+
+  private promptSpan(): HTMLElement {
+    const el = document.createElement("span");
+    el.className = "cl-term-prompt";
+    el.textContent = this.prompt;
+    // Decorative: a screen reader gets the command text, not "dollar sign".
+    el.setAttribute("aria-hidden", "true");
+    return el;
+  }
+
+  private scrollToEnd(): void {
+    if (this.scroll) this.scroll.scrollTop = this.scroll.scrollHeight;
+  }
+
+  /** Clicking anywhere in the console puts the caret back on the live line -
+   *  except when the click ended a selection, so output stays copyable. */
+  private readonly onRootClick = (ev: MouseEvent): void => {
+    if (ev.target === this.input) return;
+    const sel = typeof document.getSelection === "function" ? document.getSelection() : null;
+    if (sel && sel.toString() !== "") return;
+    this.focus();
+  };
+}

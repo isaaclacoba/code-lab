@@ -23,6 +23,21 @@ export type { GitGraphInspect } from "./dom/git-graph-view.js";
 export type { RepoState, Hash, Commit, RefName, Head } from "./core/git-model.js";
 export type { GraphLayout, LayoutNode, LayoutEdge, LayoutChip } from "./core/git-layout.js";
 export { layout as gitLayout } from "./core/git-layout.js";
+// The git RUNTIME: without these the vendored bundle can draw a repo but not change
+// one, so the course's git plugin could never run a learner's command.
+export {
+  init as gitInit, stage as gitStage, commit as gitCommit, branch as gitBranch,
+  tag as gitTag, checkout as gitCheckout, merge as gitMerge, mergeAbort as gitMergeAbort,
+  resolvePaths as gitResolvePaths, reset as gitReset, revParse as gitRevParse,
+  revList as gitRevList, GitError,
+} from "./core/git-model.js";
+export type { OpResult, Effect } from "./core/git-model.js";
+export { run as gitRun, tokenize as gitTokenize } from "./core/git-cli.js";
+export type { RunResult as GitRunResult } from "./core/git-cli.js";
+// The line console the git track types into (dependency-free; xterm.js is deferred).
+export { LineTerminal } from "./dom/line-terminal.js";
+export type { LineTerminalOptions, LineKind } from "./dom/line-terminal.js";
+export { CommandHistory } from "./core/terminal-history.js";
 export type {
   MemoryVizConfig,
   MemoryScene,

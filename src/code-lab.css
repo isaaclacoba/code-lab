@@ -1172,6 +1172,9 @@
   --clg-mod: #f59e0b;
   --clg-staged: #22c55e;
   --clg-committed: #94a3b8;
+  --clg-ghost-opacity: 0.26;
+  --clg-ghost-dash: 4 3;
+  --clg-danger: #e11d48;
   font-family: system-ui, "Segoe UI", Roboto, sans-serif;
   color: var(--clg-ink);
   line-height: 1.5;
@@ -1266,6 +1269,20 @@
   border-radius: 5px;
 }
 
+/* --- ghost model: one canvas laid out from the TARGET. A commit the learner has
+   not made yet is faded + dashed in the slot it will occupy; a commit the target
+   does not contain is flagged in the danger colour. The dot's lane colour is an
+   SVG presentation attribute, so these author rules win without !important. */
+.cl-git .cl-git-ghost { opacity: var(--clg-ghost-opacity); }
+.cl-git .cl-git-node.cl-git-ghost .cl-git-dot { stroke-dasharray: var(--clg-ghost-dash); }
+.cl-git .cl-git-edge-ghost { opacity: var(--clg-ghost-opacity); stroke-dasharray: 6 5; }
+.cl-git .cl-git-node.cl-git-diverged .cl-git-dot {
+  stroke: var(--clg-danger);
+  stroke-dasharray: var(--clg-ghost-dash);
+}
+.cl-git .cl-git-node.cl-git-diverged .cl-git-msg,
+.cl-git .cl-git-node.cl-git-diverged .cl-git-hash { fill: var(--clg-danger); }
+
 /* --- animation: gentle ~400ms fade+slide for what is NEW --- */
 .cl-git .cl-git-appear { animation: clg-appear 0.4s ease both; }
 .cl-git .cl-git-edge-draw { stroke-dasharray: 1; animation: clg-draw 0.4s ease both; }
@@ -1280,4 +1297,88 @@
   .cl-git .cl-git-edge-draw,
   .cl-git .cl-git-file.is-moved { animation: none; }
   .cl-git .cl-git-chip.is-head { transition: none; }
+}
+
+/* --------------------------------------------------------- LineTerminal */
+/* The single-line console: a scrollback plus one live prompt row. Dark by
+   default (a terminal reads as a terminal), and every colour is a --clt-*
+   custom property so a course theme can re-point the palette without touching
+   the view - same contract as --clg-* / --mv-*. The live line is a real
+   <input>, so the caret, selection and Tab order are the browser's; the focus
+   ring is drawn on the root via :focus-within because the input itself is
+   chromeless. */
+.cl-term {
+  --clt-bg: #10141c;
+  --clt-border: #2a3242;
+  --clt-ink: #e6edf3;
+  --clt-prompt: #6ee7b7;
+  --clt-cmd: #f2f6fa;
+  --clt-err: #ff8f8f;
+  --clt-warn: #f0c674;
+  --clt-good: #7ee787;
+  --clt-caret: #6ee7b7;
+  --clt-focus: rgba(110, 231, 183, 0.35);
+  --clt-radius: 10px;
+  --clt-size: 13px;
+  --clt-height: 240px;
+  --clt-font: var(--cl-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  box-sizing: border-box;
+  height: var(--clt-height);
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  background: var(--clt-bg);
+  color: var(--clt-ink);
+  border: 1px solid var(--clt-border);
+  border-radius: var(--clt-radius);
+  font: var(--clt-size) / 1.5 var(--clt-font);
+  cursor: text;
+  overflow: hidden;
+}
+.cl-term:focus-within { border-color: var(--clt-prompt); box-shadow: 0 0 0 3px var(--clt-focus); }
+
+/* --- scrollback --- */
+.cl-term .cl-term-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--clt-border) transparent;
+}
+.cl-term .cl-term-scroll::-webkit-scrollbar { width: 8px; }
+.cl-term .cl-term-scroll::-webkit-scrollbar-thumb { background: var(--clt-border); border-radius: 8px; }
+.cl-term .cl-term-line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-height: 1.5em;
+  color: var(--clt-ink);
+}
+.cl-term .cl-term-line.is-cmd { color: var(--clt-cmd); }
+.cl-term .cl-term-line.is-err { color: var(--clt-err); }
+.cl-term .cl-term-line.is-warn { color: var(--clt-warn); }
+.cl-term .cl-term-line.is-good { color: var(--clt-good); }
+
+/* --- live prompt row --- */
+.cl-term .cl-term-row { display: flex; align-items: baseline; }
+.cl-term .cl-term-prompt {
+  flex: none;
+  color: var(--clt-prompt);
+  font-weight: 600;
+  user-select: none;
+}
+/* The live line is flex, so its prompt needs a real gap; an echoed line is
+   pre-wrap text and carries a literal space instead. */
+.cl-term .cl-term-row .cl-term-prompt { margin-right: 0.6em; }
+.cl-term .cl-term-input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--clt-cmd);
+  font: inherit;
+  caret-color: var(--clt-caret);
+  outline: none;
 }

@@ -12,6 +12,14 @@
 // the rest of the graph stays put. The HEAD pill is a persistent element that
 // glides to its commit. All motion collapses to instant under
 // `prefers-reduced-motion` (handled in CSS).
+//
+// GHOST MODEL (practical pages). There is only ever ONE graph: the state handed
+// in is the TARGET-derived union, laid out once, so every commit sits in the slot
+// the target gives it. `ghost` lists the commits the learner has not made yet -
+// drawn faded and dashed in the slot they will occupy; `diverged` lists commits
+// the learner made that the target does not contain - drawn flagged. Progress is
+// ghosts turning solid. Because the layout comes from the one union state, a
+// ghost can never disagree with its solid counterpart about lane or column.
 
 import type { RepoState, Hash } from "../core/git-model.js";
 import { layout } from "../core/git-layout.js";
@@ -35,10 +43,21 @@ const NODE_R = 10;
 // widget still works standalone.
 const LANE_FALLBACK = ["#6366f1", "#14b8a6", "#f97316", "#a855f7", "#0ea5e9", "#e11d48"];
 
-/** A ref/HEAD label anchored to a commit, used by the click delegate. */
+/** A ref/HEAD label anchored to a commit, used by the click delegate. `ghost` is
+ *  set only when the clicked commit is one the learner has not made yet, so a
+ *  host can teach ("not there yet") instead of inspecting a commit that does not
+ *  exist. */
 export interface GitGraphInspect {
   commit?: Hash;
   ref?: string;
+  ghost?: true;
+}
+
+/** Which commits render ghosted (missing) or flagged (off-plan). Both are read
+ *  fresh on every `setState`: they describe the snapshot, they are not sticky. */
+export interface GitGraphOverlay {
+  ghost?: Hash[];
+  diverged?: Hash[];
 }
 
 type InspectHandler = (p: GitGraphInspect) => void;
@@ -68,14 +87,19 @@ export class GitGraph {
   private state: RepoState | null = null;
   private readonly handlers: InspectHandler[] = [];
 
+  // The ghost overlay for the current state (see the header note).
+  private ghost = new Set<Hash>();
+  private diverged = new Set<Hash>();
+
   // Diff bookkeeping across renders, so only NEW nodes/edges animate.
   private prevNodeIds = new Set<Hash>();
   private prevEdgeKeys = new Set<string>();
+  private prevGhostIds = new Set<Hash>();
   private prevZoneOf = new Map<string, Zone>();
 
   // --- lifecycle ---------------------------------------------------------
 
-  mount(host: HTMLElement, opts: { state: RepoState }): void {
+  mount(host: HTMLElement, opts: { state: RepoState } & GitGraphOverlay): void {
     this.root = document.createElement("div");
     this.root.className = "cl-git";
 
@@ -102,12 +126,23 @@ export class GitGraph {
     host.appendChild(this.root);
 
     this.state = opts.state;
+    this.setOverlay(opts);
     this.render(false);
   }
 
-  setState(state: RepoState, opts?: { animate?: boolean }): void {
+  setState(state: RepoState, opts?: { animate?: boolean } & GitGraphOverlay): void {
     this.state = state;
+    this.setOverlay(opts);
     this.render(opts?.animate ?? false);
+  }
+
+  /** Replace the overlay wholesale. Omitting a list means "none": the overlay
+   *  belongs to the state snapshot, so a caller that stops passing ghosts gets a
+   *  fully solid graph rather than stale fading. A commit named in both lists is
+   *  treated as diverged - the learner has it, so it is not missing. */
+  private setOverlay(opts?: GitGraphOverlay): void {
+    this.diverged = new Set(opts?.diverged ?? []);
+    this.ghost = new Set((opts?.ghost ?? []).filter((id) => !this.diverged.has(id)));
   }
 
   on(event: "inspect", handler: InspectHandler): void {
@@ -131,7 +166,11 @@ export class GitGraph {
       return;
     }
     const commitEl = target.closest("[data-commit]") as HTMLElement | SVGElement | null;
-    if (commitEl) this.emit({ commit: (commitEl as HTMLElement).dataset?.commit });
+    if (!commitEl) return;
+    const commit = (commitEl as HTMLElement).dataset?.commit;
+    // A ghost is still clickable, but the payload says so: it is a slot, not a
+    // commit, and inspecting it as if it existed would be a lie.
+    this.emit(commit !== undefined && this.ghost.has(commit) ? { commit, ghost: true } : { commit });
   };
 
   private emit(p: GitGraphInspect): void {
@@ -174,6 +213,7 @@ export class GitGraph {
 
     this.prevNodeIds = newNodeIds;
     this.prevEdgeKeys = newEdgeKeys;
+    this.prevGhostIds = new Set(this.ghost);
   }
 
   private px(node: LayoutNode): { x: number; y: number } {
@@ -204,9 +244,16 @@ export class GitGraph {
       }
 
       const isNew = animate && !this.prevEdgeKeys.has(key);
+      // An edge belongs to its CHILD (the newer commit): if that commit has not
+      // been made yet, the link to its parent has not happened either. Read off
+      // the edge data, so a ghosted merge fades both of its incoming edges.
+      const ghosted = this.ghost.has(edge.from);
+      const classes = ["cl-git-edge"];
+      if (isNew && !ghosted) classes.push("cl-git-edge-draw");
+      if (ghosted) classes.push("cl-git-edge-ghost");
       const path = svgEl("path", {
         d,
-        class: isNew ? "cl-git-edge cl-git-edge-draw" : "cl-git-edge",
+        class: classes.join(" "),
         stroke: laneVar(branchLane),
         fill: "none",
         pathLength: 1,
@@ -224,9 +271,18 @@ export class GitGraph {
     for (const node of nodes) {
       newNodeIds.add(node.id);
       const { x, y } = this.px(node);
-      const isNew = animate && !this.prevNodeIds.has(node.id);
+      const ghosted = this.ghost.has(node.id);
+      // A ghost is a slot, not an achievement: never animate it in. A commit that
+      // WAS a ghost and is now solid is the achievement, so it does animate even
+      // though its id was on screen before.
+      const isNew =
+        animate && !ghosted && (!this.prevNodeIds.has(node.id) || this.prevGhostIds.has(node.id));
+      const classes = ["cl-git-node"];
+      if (isNew) classes.push("cl-git-appear");
+      if (ghosted) classes.push("cl-git-ghost");
+      else if (this.diverged.has(node.id)) classes.push("cl-git-diverged");
       const group = svgEl("g", {
-        class: isNew ? "cl-git-node cl-git-appear" : "cl-git-node",
+        class: classes.join(" "),
         "data-commit": node.id,
       });
       group.appendChild(
@@ -277,6 +333,8 @@ export class GitGraph {
         const pill = document.createElement("button");
         pill.type = "button";
         pill.className = `cl-git-chip is-${chip.kind}`;
+        // A ref that only exists once the missing commit does reads as ghosted.
+        if (this.ghost.has(commit)) pill.classList.add("cl-git-ghost");
         pill.textContent = chip.label;
         if (chip.kind === "branch") {
           pill.style.background = laneVar(laneOf.get(commit) ?? 0);
@@ -313,6 +371,7 @@ export class GitGraph {
     this.headEl.dataset.on = head.on ?? "";
     this.headEl.title = head.on ? `HEAD -> ${head.on}` : "HEAD (detached)";
     this.headEl.classList.toggle("is-detached", head.on === undefined);
+    this.headEl.classList.toggle("cl-git-ghost", this.ghost.has(head.commit));
     this.headEl.style.left = `${pos.x}px`;
     this.headEl.style.top = `${pos.y - 54}px`;
     if (!animate) {
