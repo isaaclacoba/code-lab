@@ -1,0 +1,6 @@
+#!/bin/sh
+# code-lab pre-commit gate. Runs the mechanical auditor and blocks the commit on
+# any failure. Enable in a fresh clone with:
+#   git config core.hooksPath .githooks
+# Bypass is intentionally not documented; do not use --no-verify to dodge a red gate.
+exec node "$(dirname "$0")/../tools/audit-gate.mjs"
