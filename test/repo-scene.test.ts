@@ -1,59 +1,54 @@
 // test/repo-scene.test.ts - the `repo` scene's resolver.
 //
 // WHY THIS EXISTS
-// A git theory step names commits to highlight by id. An id that is not in the
-// step's repository is an authoring slip, and the two ways to handle it are not
-// equal: throwing kills the lesson mid-run for a learner who did nothing wrong,
-// while dropping the id costs one missing highlight that an author will see.
-// resolveRepo is the single place that choice is made, so it is pinned here.
+// The first version of this scene handed each step a ready-made RepoState. It
+// mounted fine in isolation and died in a real lesson, because the stepper
+// deep-clones every step and a structural clone turns a RepoState's Maps into
+// plain objects - GitGraph then gets a `commits` with no `.keys()`. The scene now
+// carries plain COMMANDS and replays them in the view. The clone-safety test
+// below is the one that would have caught it.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveRepo } from "../src/core/repo-scene.ts";
-import { init, addFiles, stage, commit, headCommit } from "../src/core/git-model.ts";
-import type { RepoState } from "../src/core/git-model.ts";
+import { deepClone } from "../src/core/memory-model.ts";
 
-function repoWithOneCommit(): { state: RepoState; id: string } {
-  let s = addFiles(init(), ["cat.txt"]).state;
-  s = stage(s, ["cat.txt"]).state;
-  s = commit(s, "add cat").state;
-  return { state: s, id: headCommit(s)! };
-}
-
-test("a scene with no state resolves to nothing rather than throwing", () => {
+test("a scene with no command list resolves to nothing rather than throwing", () => {
   assert.equal(resolveRepo(undefined), null);
   assert.equal(resolveRepo({} as never), null);
+  assert.equal(resolveRepo({ commands: "git init" } as never), null, "a string is not a list");
 });
 
-test("the repository is passed through untouched", () => {
-  const { state } = repoWithOneCommit();
-  const out = resolveRepo({ state })!;
-  assert.equal(out.state, state, "the view hands this straight to GitGraph");
+test("commands and files come back as given", () => {
+  const out = resolveRepo({ files: ["cat.txt"], commands: ["git add cat.txt"] })!;
+  assert.deepEqual(out.files, ["cat.txt"]);
+  assert.deepEqual(out.commands, ["git add cat.txt"]);
 });
 
-test("highlighted ids the repository actually holds are kept", () => {
-  const { state, id } = repoWithOneCommit();
-  const out = resolveRepo({ state, ghost: [id], diverged: [id] })!;
-  assert.deepEqual(out.ghost, [id]);
-  assert.deepEqual(out.diverged, [id]);
+test("a scene with no files resolves to an empty folder, never undefined", () => {
+  const out = resolveRepo({ commands: ["git init"] })!;
+  assert.deepEqual(out.files, [], "the view must never index into undefined");
 });
 
-test("an id no commit matches is dropped, not drawn and not thrown", () => {
-  const { state, id } = repoWithOneCommit();
-  const out = resolveRepo({ state, ghost: [id, "nosuch"], diverged: ["nosuch"] })!;
-  assert.deepEqual(out.ghost, [id], "the real id survives");
-  assert.deepEqual(out.diverged, [], "the invented one is gone");
-});
-
-test("missing highlight lists resolve to empty arrays, so the view never sees undefined", () => {
-  const { state } = repoWithOneCommit();
-  const out = resolveRepo({ state })!;
-  assert.deepEqual(out.ghost, []);
-  assert.deepEqual(out.diverged, []);
+test("the resolved scene is a copy, so a step cannot be mutated by rendering it", () => {
+  const scene = { files: ["cat.txt"], commands: ["git init"] };
+  const out = resolveRepo(scene)!;
+  out.files.push("sneaky.txt");
+  out.commands.push("git commit -m 'sneaky'");
+  assert.deepEqual(scene.files, ["cat.txt"], "the author's data is untouched");
+  assert.deepEqual(scene.commands, ["git init"]);
 });
 
 test("the caption is carried through as authored", () => {
-  const { state } = repoWithOneCommit();
-  assert.equal(resolveRepo({ state, note: "main has not moved" })!.note, "main has not moved");
-  assert.equal(resolveRepo({ state })!.note, undefined);
+  assert.equal(resolveRepo({ commands: [], note: "main has not moved" })!.note, "main has not moved");
+  assert.equal(resolveRepo({ commands: [] })!.note, undefined);
+});
+
+// THE REGRESSION THAT CAUSED THE REWRITE.
+test("a step survives the deep clone the stepper puts every step through", () => {
+  const step = { repo: { files: ["cat.txt"], commands: ["git add cat.txt", 'git commit -m "add cat"'] } };
+  const cloned = deepClone(step) as typeof step;
+  const out = resolveRepo(cloned.repo)!;
+  assert.deepEqual(out.files, ["cat.txt"], "files survive the clone");
+  assert.deepEqual(out.commands, ["git add cat.txt", 'git commit -m "add cat"'], "commands survive the clone");
 });

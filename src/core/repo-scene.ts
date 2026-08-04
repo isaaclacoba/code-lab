@@ -6,40 +6,45 @@
 // The practical already renders a repository with GitGraph; a theory step is the
 // same picture, held still, with narration beside it.
 //
-// So this scene carries no geometry and no drawing of its own - the view hands
-// the `RepoState` straight to the existing GitGraph. What lives here is only the
-// part a step can get WRONG: which repository to show, and which commits to call
-// out. Keeping it pure means a lesson's steps can be checked without a browser.
-
-import type { RepoState } from "./git-model.js";
+// WHY A STEP HOLDS COMMANDS AND NOT A RepoState
+// The obvious shape - hand each step a ready-made RepoState - does not survive
+// the stepper: the player deep-clones every step, and a RepoState is mostly Maps,
+// which a structural clone flattens into plain objects. GitGraph then receives a
+// `commits` with no `.keys()` and the lesson dies on mount.
+// Carrying the COMMANDS instead fixes that and two more things: step data stays
+// plain JSON, so it clones and localizes like every other scene; and a lesson
+// file no longer needs the runtime loaded before it, so the same file runs in a
+// page, in the validator and in the verifier with none of them special-casing it.
+// The replay is real - the same git the practical lessons run - so the theory
+// picture and the board the learner types into cannot drift apart.
 
 /** One step of a git explainer. */
 export interface RepoScene {
-  /** The repository as it stands at this step. */
-  state: RepoState;
-  /** Commit ids to draw as not-yet-there, for showing what a command WILL do. */
-  ghost?: string[];
-  /** Commit ids to flag as off the expected path. */
-  diverged?: string[];
+  /** Files the folder holds before anything runs, seeded as untracked. */
+  files?: string[];
+  /** Real git commands, replayed in order to build this step's picture. */
+  commands: string[];
   /** A short caption under the board, e.g. "main has not moved". */
+  note?: string;
+}
+
+/** What the view actually renders: the same fields, with the optional ones filled. */
+export interface ResolvedRepoScene {
+  files: string[];
+  commands: string[];
   note?: string;
 }
 
 /** Normalise a raw scene for rendering.
  *
- *  A step that names a commit which is not in the repository is an authoring
- *  slip, and the honest thing is to drop it rather than ask the view to draw a
- *  commit that does not exist - a missing highlight is visible, a thrown error
- *  mid-lesson is not recoverable. `resolveRepo` therefore keeps only the ids the
- *  state actually holds, and is the single place that decision is made. */
-export function resolveRepo(scene: RepoScene | undefined): RepoScene | null {
-  if (!scene || !scene.state) return null;
-  const known = (ids: string[] | undefined): string[] =>
-    (ids || []).filter((id) => scene.state.commits.has(id));
+ *  A step with no command list is an authoring slip. Returning null lets the view
+ *  skip it, which costs one blank panel the author will see - where a throw would
+ *  take down a lesson mid-run for a learner who did nothing wrong. */
+export function resolveRepo(scene: RepoScene | undefined): ResolvedRepoScene | null {
+  if (!scene || !Array.isArray(scene.commands)) return null;
   return {
-    state: scene.state,
-    ghost: known(scene.ghost),
-    diverged: known(scene.diverged),
+    files: Array.isArray(scene.files) ? scene.files.slice() : [],
+    commands: scene.commands.slice(),
     note: scene.note,
   };
 }
