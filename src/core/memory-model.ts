@@ -22,6 +22,8 @@ import type { RetrievalScene } from "./retrieval-model.js";
 export type { RetrievalScene } from "./retrieval-model.js";
 import type { PlanScene } from "./planboard-model.js";
 export type { PlanScene } from "./planboard-model.js";
+import type { RepoScene } from "./repo-scene.js";
+export type { RepoScene } from "./repo-scene.js";
 
 export interface Slot {
   id: string;
@@ -156,6 +158,8 @@ export interface Step {
   /** AI-track "planboard" scene: a goal decomposed into ordered, stateful steps.
    *  Rendered by a `planboard` panel. */
   plan?: PlanScene;
+  /** For a `repo` panel: the git repository this step shows. */
+  repo?: RepoScene;
   /** Incremental console output produced by THIS step (the delta since the
    *  previous step). Additive: set by the generated-trace adapter; the
    *  hand-authored scenes omit it, and panels that do not render output ignore
@@ -210,7 +214,7 @@ export const FULL_REGIONS: RegionName[] = ["code", "rodata", "data", "bss", "hea
 /** A composable panel a lesson can place in the layout. New panel types (bits,
  *  pipeline, network, a code editor merged from CodeLab, ...) extend this union
  *  and get a factory in the facade; existing panels are untouched (open/closed). */
-export type PanelType = "board" | "die" | "code" | "vartable" | "callstack" | "heapcards" | "narration" | "controls" | "console" | "agent" | "agentloop" | "memoryshelf" | "toolrack" | "transcript" | "retrieval" | "planboard";
+export type PanelType = "board" | "die" | "code" | "vartable" | "callstack" | "heapcards" | "narration" | "controls" | "console" | "agent" | "agentloop" | "memoryshelf" | "toolrack" | "transcript" | "retrieval" | "planboard" | "repo";
 
 export interface PanelSpec {
   type: PanelType;
