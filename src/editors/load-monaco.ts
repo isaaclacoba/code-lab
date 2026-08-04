@@ -152,18 +152,41 @@ function registerCSharpCompletions(monaco: MonacoNamespace): void {
       // keyword list after a dot is noise, and wrong.
       const receiver = receiverBefore(lineUpToCursor);
       if (receiver) {
-        const own = membersOf(scanned, receiver);
-        if (!own) return { suggestions: [] };
-        return {
-          suggestions: own.map((m) => ({
-            label: m.name,
-            kind: memberKind(m),
-            detail: m.detail,
-            insertText: m.kind === "method" ? `${m.name}($0)` : m.name,
-            insertTextRules: m.kind === "method" ? R : undefined,
-            range,
-          })),
+        // `ToString()` comes from System.Object, so it is valid after any
+        // receiver at all - resolved or not.
+        const toStringItem = {
+          label: "ToString", kind: K.Method, detail: "string ToString()",
+          insertText: "ToString()", insertTextRules: undefined, range,
         };
+        const own = membersOf(scanned, receiver);
+        if (own) {
+          return {
+            suggestions: own.map((m) => ({
+              label: m.name,
+              kind: memberKind(m),
+              detail: m.detail,
+              insertText: m.kind === "method" ? `${m.name}($0)` : m.name,
+              insertTextRules: m.kind === "method" ? R : undefined,
+              range,
+            })).concat([toStringItem]),
+          };
+        }
+        // Not one of the learner's types - `Console.`, `string.`, an unresolved
+        // local. Offer the curated entries written for that receiver, with the
+        // receiver trimmed off since it is already typed. Returning nothing
+        // here would hide Console.WriteLine the moment the dot is pressed.
+        const prefix = `${receiver}.`;
+        const curated = members
+          .filter((m) => m.label.startsWith(prefix))
+          .map((m) => ({
+            label: m.label.slice(prefix.length),
+            kind: K.Method,
+            detail: m.doc,
+            insertText: m.insert.startsWith(prefix) ? m.insert.slice(prefix.length) : m.insert,
+            insertTextRules: R,
+            range,
+          }));
+        return { suggestions: curated.concat([toStringItem]) };
       }
 
       const suggestions: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any

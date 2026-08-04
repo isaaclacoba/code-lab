@@ -193,3 +193,37 @@ test("a plain using directive contributes nothing", () => {
   assert.deepEqual(s.vars.map((v) => v.name), []);
   assert.deepEqual(s.types.map((t) => t.name), ["Dog"]);
 });
+
+// REGRESSION: `public Dog(string name)` also matches the METHOD shape, with
+// "public" landing in the return-type slot. The method branch ran first and
+// claimed it, so `d.` offered `Dog` and accepting it wrote `d.Dog()` - CS1061.
+// The guard that was supposed to stop this sat after the method branch and was
+// unreachable. Every course class with a modifier on its constructor hit this.
+test("a constructor is not offered as an instance member", () => {
+  for (const mod of ["public", "private", "protected", "internal"]) {
+    const src = `class Dog {
+        public string Name { get; set; }
+        ${mod} Dog(string name) { Name = name; }
+        public void Bark() { }
+      }
+      class P { static void Main() { var d = new Dog("x"); } }`;
+    const s = scanCSharp(src);
+    const names = membersOf(s, "d")!.map((m) => m.name).sort();
+    assert.deepEqual(names, ["Bark", "Name"], `${mod} ctor must not be a member`);
+  }
+});
+
+// The same shape must not swallow real methods: `void Bark()` ALSO matches the
+// constructor regex, so the fix cannot simply test the ctor shape first.
+test("a real method is still found when a constructor is present", () => {
+  const src = `class Dog {
+      public Dog() { }
+      public void Bark() { }
+      public int Age() { return 1; }
+      public static Dog Create() { return new Dog(); }
+    }
+    class P { static void Main() { var d = new Dog(); } }`;
+  const s = scanCSharp(src);
+  assert.deepEqual(membersOf(s, "d")!.map((m) => m.name).sort(), ["Age", "Bark"]);
+  assert.deepEqual(membersOf(s, "Dog")!.map((m) => m.name), ["Create"]);
+});

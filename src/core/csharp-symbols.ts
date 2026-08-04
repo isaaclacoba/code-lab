@@ -170,7 +170,11 @@ function takeDeclaration(
   const method = text.match(/([A-Za-z_][A-Za-z0-9_<>,.\[\]\?]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(<[^>]*>)?\s*\(([^)]*)\)\s*$/);
   if (method) {
     const name = method[2];
-    if (!NOT_A_DECLARATION.has(name) && !MODIFIERS.has(name)) {
+    // `public Dog(...)` also matches this shape, with "public" landing in the
+    // return-type slot. A real method's return type is never a modifier, so
+    // that mismatch is what tells a constructor apart - let it fall through.
+    const looksLikeCtor = MODIFIERS.has(method[1]);
+    if (!looksLikeCtor && !NOT_A_DECLARATION.has(name) && !MODIFIERS.has(name)) {
       const ret = bareType(method[1]);
       push({ name, kind: "method", type: ret, isStatic, detail: `${ret} ${name}(${method[4].trim()})` });
       return;
