@@ -28,6 +28,9 @@ export interface TypeSymbol {
   name: string;
   kind: TypeKind;
   members: MemberSymbol[];
+  /** Base class and implemented interfaces, in declaration order, stripped of
+   *  generic arguments. Empty when the type declared no base list. */
+  bases: string[];
 }
 
 export interface VarSymbol {
@@ -119,6 +122,21 @@ function matchBrace(src: string, open: number): number {
 
 function isIdent(s: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s);
+}
+
+/** The `: A, B` base list of a declaration, given the text between the type
+ *  name and the body. Positional record parameters and a generic `where`
+ *  constraint clause are dropped first so neither is mistaken for a base. */
+function baseList(segment: string): string[] {
+  const noParams = segment.replace(/\([^)]*\)/g, "");
+  const noWhere = noParams.split(/\bwhere\b/)[0];
+  const colon = noWhere.indexOf(":");
+  if (colon === -1) return [];
+  return noWhere
+    .slice(colon + 1)
+    .split(",")
+    .map((part) => bareType(part))
+    .filter(isIdent);
 }
 
 /** A usable type name for completion purposes (strips generics/arrays/nullable). */
@@ -227,6 +245,14 @@ export function scanCSharp(source: string): CSharpSymbols {
     const after = src.slice(m.index + m[0].length);
     const positional = after.match(/^\s*\(([^)]*)\)/);
     const open = src.indexOf("{", m.index + m[0].length);
+    // The declaration ends at whichever comes first: its body, or the `;` of a
+    // bodyless record. Anything after that belongs to the NEXT declaration.
+    const semi = src.indexOf(";", m.index + m[0].length);
+    const declEnd =
+      open === -1
+        ? (semi === -1 ? src.length : semi)
+        : (semi === -1 ? open : Math.min(open, semi));
+    const bases = baseList(src.slice(m.index + m[0].length, declEnd));
     let members: MemberSymbol[] = [];
     if (positional) {
       members = positional[1].split(",").map((p) => p.trim()).filter(Boolean).map((p) => {
@@ -251,7 +277,7 @@ export function scanCSharp(source: string): CSharpSymbols {
         }
       }
     }
-    if (isIdent(name) && !types.some((t) => t.name === name)) types.push({ name, kind, members });
+    if (isIdent(name) && !types.some((t) => t.name === name)) types.push({ name, kind, members, bases });
   }
 
   // Locals: `var x = new Dog()`, `Dog d = ...`, `Dog d;` anywhere.

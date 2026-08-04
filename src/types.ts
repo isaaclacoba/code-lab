@@ -55,6 +55,11 @@ export interface EditorAdapter {
   /** Optional running-line highlight. `line` is a 0-based source line;
    *  pass null (or a negative line) to clear it. */
   highlightLine?(line: number | null): void;
+  /** Optional buffer-change notification, for a host that must react as the
+   *  learner types (a live goal tracker, a structure view). Returns a function
+   *  that unsubscribes. Editors that cannot observe changes simply omit it, and
+   *  a caller must treat its absence as "this surface is not live". */
+  onChange?(listener: (value: string) => void): () => void;
   destroy(): void;
 }
 

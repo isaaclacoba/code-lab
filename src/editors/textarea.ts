@@ -11,6 +11,7 @@ export class TextareaEditor implements EditorAdapter {
   private pre?: HTMLPreElement;
   private code?: HTMLElement;
   private textarea?: HTMLTextAreaElement;
+  private listeners: Array<(value: string) => void> = [];
 
   constructor(highlighter?: Highlighter) {
     this.highlighter = highlighter ?? defaultHighlighter();
@@ -52,6 +53,20 @@ export class TextareaEditor implements EditorAdapter {
     const text = this.textarea.value;
     this.code.innerHTML = this.highlighter.highlight(text + "\n", this.language);
     this.syncScroll();
+    this.emit(text);
+  }
+
+  // Every path that changes the buffer funnels through sync(), so notifying
+  // here covers typing AND setValue - the same events Monaco reports.
+  private emit(value: string): void {
+    for (const listener of this.listeners.slice()) listener(value);
+  }
+
+  onChange(listener: (value: string) => void): () => void {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter((l) => l !== listener);
+    };
   }
 
   private syncScroll(): void {
@@ -76,6 +91,7 @@ export class TextareaEditor implements EditorAdapter {
   }
 
   destroy(): void {
+    this.listeners = [];
     this.wrap?.remove();
     this.wrap = undefined;
     this.pre = undefined;

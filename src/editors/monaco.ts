@@ -93,6 +93,15 @@ export class MonacoEditor implements EditorAdapter {
     return this.editor ? this.editor.getValue() : "";
   }
 
+  // Notify on every buffer edit, including setValue, so a host can mirror the
+  // source without polling. Monaco's disposable is handed back as a plain
+  // unsubscribe function, keeping monaco's types out of the adapter contract.
+  onChange(listener: (value: string) => void): () => void {
+    if (!this.editor) return () => {};
+    const sub = this.editor.onDidChangeModelContent(() => listener(this.getValue()));
+    return () => sub.dispose();
+  }
+
   setValue(value: string): void {
     if (this.editor) this.editor.setValue(value);
   }

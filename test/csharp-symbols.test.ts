@@ -227,3 +227,57 @@ test("a real method is still found when a constructor is present", () => {
   assert.deepEqual(membersOf(s, "d")!.map((m) => m.name).sort(), ["Age", "Bark"]);
   assert.deepEqual(membersOf(s, "Dog")!.map((m) => m.name), ["Create"]);
 });
+
+// --- base lists -------------------------------------------------------------
+// SOLID is taught through the arrows between types, so a structure view needs
+// the `: Base, IFace` list, not just the type name.
+test("a base class and interfaces are captured in declaration order", () => {
+  const s = scanCSharp(`
+    public interface IAnimal { string Speak(); }
+    public interface INamed { string Name(); }
+    public class Animal { }
+    public class Cat : Animal, IAnimal, INamed {
+      public string Speak() { return "Meow"; }
+      public string Name() { return "cat"; }
+    }`);
+  const cat = s.types.find((t) => t.name === "Cat")!;
+  assert.deepEqual(cat.bases, ["Animal", "IAnimal", "INamed"]);
+});
+
+test("a type with no base list reports an empty array, never undefined", () => {
+  const s = scanCSharp(`class Program { static void Main() { } }`);
+  assert.deepEqual(s.types.find((t) => t.name === "Program")!.bases, []);
+});
+
+test("generic arguments are stripped from a base name", () => {
+  const s = scanCSharp(`public class Box<T> : List<T>, IBox<T> { }`);
+  assert.deepEqual(s.types.find((t) => t.name === "Box")!.bases, ["List", "IBox"]);
+});
+
+test("a positional record's parameters are not mistaken for a base list", () => {
+  const s = scanCSharp(`public record Pet(string Name, int Legs) : IAnimal;`);
+  assert.deepEqual(s.types.find((t) => t.name === "Pet")!.bases, ["IAnimal"]);
+});
+
+test("a where-constraint clause is not read as a base", () => {
+  const s = scanCSharp(`public class Cage<T> : ICage where T : IAnimal { }`);
+  assert.deepEqual(s.types.find((t) => t.name === "Cage")!.bases, ["ICage"]);
+});
+
+// The declaration must not reach past its own body into the next type: a
+// bodyless record ends at its `;`, and a plain class ends at its `{`.
+test("one type's base list never leaks into the next declaration", () => {
+  const s = scanCSharp(`
+    public class Sparrow : IMover { public string Move() { return "Fly"; } }
+    public class Penguin { public string Move() { return "Swim"; } }`);
+  assert.deepEqual(s.types.find((t) => t.name === "Sparrow")!.bases, ["IMover"]);
+  assert.deepEqual(s.types.find((t) => t.name === "Penguin")!.bases, []);
+});
+
+test("a base list written inside a comment or string is ignored", () => {
+  const s = scanCSharp(`
+    // class Ghost : IHaunt
+    public class Cat { public string S() { return "class Fake : IFake"; } }`);
+  assert.equal(s.types.some((t) => t.name === "Ghost"), false);
+  assert.deepEqual(s.types.find((t) => t.name === "Cat")!.bases, []);
+});
