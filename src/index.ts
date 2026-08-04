@@ -7,6 +7,8 @@ export { TextareaEditor } from "./editors/textarea.js";
 export { MonacoEditor } from "./editors/monaco.js";
 export type { MonacoEditorConfig } from "./editors/monaco.js";
 export { loadMonaco } from "./editors/load-monaco.js";
+export { scanCSharp, receiverBefore, membersOf, stripCommentsAndStrings } from "./core/csharp-symbols.js";
+export type { CSharpSymbols, TypeSymbol, MemberSymbol, VarSymbol, TypeKind, MemberKind } from "./core/csharp-symbols.js";
 export type { LoadMonacoConfig } from "./editors/load-monaco.js";
 
 export { IframeRunner, RoslynIframeRunner } from "./runners/roslyn-iframe.js";

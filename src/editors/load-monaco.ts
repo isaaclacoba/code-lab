@@ -3,6 +3,9 @@
 // and call require() by hand. This helper does all of that and resolves
 // window.monaco, so a consumer can just: await loadMonaco(); new MonacoEditor().
 // Kept out of the editor adapter so a read-only embed never pulls Monaco in.
+import { scanCSharp, receiverBefore, membersOf } from "../core/csharp-symbols.js";
+import type { MemberSymbol, TypeSymbol } from "../core/csharp-symbols.js";
+
 type MonacoNamespace = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 declare global {
@@ -78,7 +81,9 @@ function requireEditorMain(base: string): Promise<MonacoNamespace> {
 }
 
 // Curated C# suggestions so completions work on static hosting (no language
-// server). Mirrors the set used by the reference capstone host.
+// server). Mirrors the set used by the reference capstone host, and is joined at
+// request time by the symbols the LEARNER declared in the buffer (scanCSharp),
+// so `class Dog` is offered back as `Dog` and `dog.` lists Dog's own members.
 function registerCSharpCompletions(monaco: MonacoNamespace): void {
   const keywords = [
     "public", "private", "protected", "internal", "static", "void", "class",
@@ -108,6 +113,9 @@ function registerCSharpCompletions(monaco: MonacoNamespace): void {
   ];
 
   monaco.languages.registerCompletionItemProvider("csharp", {
+    // `.` so member completions appear as soon as the learner types a dot,
+    // instead of only after the next letter.
+    triggerCharacters: ["."],
     provideCompletionItems(model: any, position: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       const word = model.getWordUntilPosition(position);
       const range = {
@@ -118,7 +126,65 @@ function registerCSharpCompletions(monaco: MonacoNamespace): void {
       };
       const K = monaco.languages.CompletionItemKind;
       const R = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+
+      // Read what the learner has actually written. Never let a scan failure
+      // break typing - fall back to the curated list.
+      let scanned: ReturnType<typeof scanCSharp> = { types: [], vars: [] };
+      let lineUpToCursor = "";
+      try {
+        scanned = scanCSharp(model.getValue());
+        lineUpToCursor = model.getValueInRange({
+          startLineNumber: position.lineNumber,
+          startColumn: 1,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column,
+        });
+      } catch { /* keep the curated list */ }
+
+      const memberKind = (m: MemberSymbol): number =>
+        m.kind === "method" ? K.Method
+          : m.kind === "property" ? K.Property
+            : m.kind === "enumMember" ? K.EnumMember
+              : K.Field;
+
+      // After `x.` offer ONLY that receiver's members. When the receiver cannot
+      // be resolved, return nothing rather than dumping the global list - a
+      // keyword list after a dot is noise, and wrong.
+      const receiver = receiverBefore(lineUpToCursor);
+      if (receiver) {
+        const own = membersOf(scanned, receiver);
+        if (!own) return { suggestions: [] };
+        return {
+          suggestions: own.map((m) => ({
+            label: m.name,
+            kind: memberKind(m),
+            detail: m.detail,
+            insertText: m.kind === "method" ? `${m.name}($0)` : m.name,
+            insertTextRules: m.kind === "method" ? R : undefined,
+            range,
+          })),
+        };
+      }
+
       const suggestions: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
+      // The learner's own symbols go FIRST: sortText "0" outranks the curated
+      // entries, so `Dog` beats `double` when they type "Do".
+      const typeKind = (t: TypeSymbol): number =>
+        t.kind === "interface" ? K.Interface
+          : t.kind === "enum" ? K.Enum
+            : t.kind === "struct" ? K.Struct : K.Class;
+      for (const t of scanned.types) {
+        suggestions.push({
+          label: t.name, kind: typeKind(t), detail: `${t.kind} ${t.name} (yours)`,
+          insertText: t.name, sortText: "0" + t.name, range,
+        });
+      }
+      for (const v of scanned.vars) {
+        suggestions.push({
+          label: v.name, kind: K.Variable, detail: v.type ? `${v.type} ${v.name}` : v.name,
+          insertText: v.name, sortText: "0" + v.name, range,
+        });
+      }
       for (const kw of keywords) {
         suggestions.push({ label: kw, kind: K.Keyword, insertText: kw, range });
       }
