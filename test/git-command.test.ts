@@ -283,3 +283,55 @@ test("git diff --staged shows what is staged but not yet committed", () => {
 test("git diff is listed in git help", () => {
   assert.match(run("git help", init()).output, /diff\s+Show what changed/);
 });
+
+// --- git diff argument handling -------------------------------------------
+
+/** Two committed files, both edited in the folder. */
+function edited() {
+  let s = addFiles(init(), [{ path: "cat.txt", text: "one\ntwo" }, { path: "dog.txt", text: "woof" }]).state;
+  s = commit(stage(s, ["cat.txt", "dog.txt"]).state, "base").state;
+  s = edit(s, "cat.txt", "one\ntwo CHANGED").state;
+  return edit(s, "dog.txt", "woof CHANGED").state;
+}
+const headers = (out: string) => out.split("\n").filter((l) => l.startsWith("diff --git"));
+
+test("git diff <path> limits the diff to that file", () => {
+  // The most natural thing a learner types. It used to be read as a revision
+  // and rejected with "unknown revision: cat.txt".
+  const out = run("git diff cat.txt", edited()).output;
+  assert.deepEqual(headers(out), ["diff --git a/cat.txt b/cat.txt"]);
+});
+
+test("git diff -- <path> works too, and -- ends the guessing", () => {
+  const out = run("git diff -- dog.txt", edited()).output;
+  assert.deepEqual(headers(out), ["diff --git a/dog.txt b/dog.txt"]);
+});
+
+test("git diff with no path still shows every changed file", () => {
+  assert.equal(headers(run("git diff", edited()).output).length, 2);
+});
+
+test("git diff <rev> <rev> compares the two commits, not the folder", () => {
+  // This used to take the first revision and silently ignore the second, so it
+  // answered a different question than the one asked and looked like it worked.
+  let s = addFiles(init(), [{ path: "a.txt", text: "base" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "base").state;
+  s = run("git branch fix", s).state;
+  s = commit(stage(edit(s, "a.txt", "main version").state, ["a.txt"]).state, "main edit").state;
+
+  const out = run("git diff fix main", s).output;
+  assert.match(out, /^-base$/m);
+  assert.match(out, /^\+main version$/m);
+});
+
+test("an option this git does not have is refused, not quietly ignored", () => {
+  const r = run("git diff --stat", edited());
+  assert.ok(r.error, "reported as a failure");
+  assert.match(r.output, /unknown option/);
+});
+
+test("a word that is neither a revision nor a file is refused clearly", () => {
+  const r = run("git diff nonsense", edited());
+  assert.ok(r.error);
+  assert.match(r.output, /unknown revision or path/);
+});

@@ -32,6 +32,7 @@ import {
   revParse,
   revList,
   fileAt,
+  treeAt,
   type RepoState,
   type Effect,
   type Hash,
@@ -248,20 +249,88 @@ function worktreeOf(s: RepoState): ReadonlyMap<string, WorktreeStatus> {
  *  staged?" - so untracked files are not in it, exactly as in real git, because
  *  git is not tracking them to compare against. `--staged` answers the other
  *  half: what is staged but not yet committed. */
-function diffText(s: RepoState, staged: boolean, rev?: string): string {
-  const head = headCommit(s);
-  const chunks: string[] = [];
+/** Every path the repo knows about anywhere - used to tell a path argument from
+ *  a revision argument without guessing. */
+function knownPaths(s: RepoState): Set<string> {
+  const all = new Set<string>();
+  for (const p of s.worktree.keys()) all.add(p);
+  for (const p of s.index.keys()) all.add(p);
+  for (const c of s.commits.values()) if (c.blobs) for (const p of c.blobs.keys()) all.add(p);
+  return all;
+}
 
-  if (staged) {
-    for (const [path, text] of [...s.index].sort((a, b) => a[0].localeCompare(b[0]))) {
+/** What `git diff` was asked to compare. */
+interface DiffArgs {
+  staged: boolean;
+  revs: string[];
+  paths: string[];
+}
+
+/** Parse `git diff [--staged] [<rev>] [<rev>] [--] [<path>...]`.
+ *
+ *  A bare word is ambiguous - `cat.txt` could be a branch - so it is resolved
+ *  the way git resolves it: a revision if one exists by that name, otherwise a
+ *  path if the repo has one. `--` ends the guessing, as it does in real git. */
+function parseDiffArgs(s: RepoState, argv: string[]): DiffArgs | string {
+  const out: DiffArgs = { staged: false, revs: [], paths: [] };
+  const known = knownPaths(s);
+  let sawSeparator = false;
+
+  for (const a of argv) {
+    if (sawSeparator) { out.paths.push(a); continue; }
+    if (a === "--") { sawSeparator = true; continue; }
+    if (a === "--staged" || a === "--cached") { out.staged = true; continue; }
+    if (a.startsWith("-")) return `error: unknown option \`${a}\``;
+
+    if (known.has(a)) { out.paths.push(a); continue; }
+    try { revParse(s, a); out.revs.push(a); }
+    catch {
+      return `fatal: ambiguous argument '${a}': unknown revision or path not in the working tree.`;
+    }
+  }
+  if (out.revs.length > 2) return "fatal: too many revisions given";
+  return out;
+}
+
+/** `git diff`.
+ *
+ *  With no argument it answers "what have I changed but not staged?" - so
+ *  untracked files are not in it, exactly as in real git, because git is not
+ *  tracking them to compare against. `--staged` answers the other half: what is
+ *  staged but not yet committed. One revision compares the folder against that
+ *  commit; two compare the commits with each other. */
+function diffText(s: RepoState, a: DiffArgs): string {
+  const head = headCommit(s);
+  const wanted = (path: string) => a.paths.length === 0 || a.paths.includes(path);
+  const chunks: string[] = [];
+  const sorted = <T>(m: Iterable<[string, T]>) =>
+    [...m].sort((x, y) => x[0].localeCompare(y[0]));
+
+  // two commits: compare their trees, ignoring the working area entirely
+  if (a.revs.length === 2) {
+    const from = treeAt(s, revParse(s, a.revs[0]));
+    const to = treeAt(s, revParse(s, a.revs[1]));
+    for (const path of [...new Set([...from.keys(), ...to.keys()])].sort()) {
+      if (!wanted(path)) continue;
+      const d = formatFileDiff(path, from.get(path) ?? "", to.get(path) ?? "");
+      if (d) chunks.push(d);
+    }
+    return chunks.join("\n");
+  }
+
+  if (a.staged) {
+    for (const [path, text] of sorted(s.index)) {
+      if (!wanted(path)) continue;
       const d = formatFileDiff(path, fileAt(s, head, path) ?? "", text);
       if (d) chunks.push(d);
     }
     return chunks.join("\n");
   }
 
+  const rev = a.revs[0];
   const against = rev ? revParse(s, rev) : head;
-  for (const [path, entry] of [...s.worktree].sort((a, b) => a[0].localeCompare(b[0]))) {
+  for (const [path, entry] of sorted(s.worktree)) {
+    if (!wanted(path)) continue;
     if (!rev && entry.status === "untracked") continue;
     const before = !rev && s.index.has(path) ? s.index.get(path)! : (fileAt(s, against, path) ?? "");
     const d = formatFileDiff(path, before, entry.text);
@@ -444,9 +513,9 @@ export function runGit(argv: string[], state: RepoState): GitRunResult {
       }
 
       case "diff": {
-        const staged = args.includes("--staged") || args.includes("--cached");
-        const rev = args.find((a) => !a.startsWith("-"));
-        return ok(state, diffText(state, staged, rev), { kind: "none" });
+        const parsed = parseDiffArgs(state, args);
+        if (typeof parsed === "string") return fail(state, parsed);
+        return ok(state, diffText(state, parsed), { kind: "none" });
       }
 
       case "commit": {
