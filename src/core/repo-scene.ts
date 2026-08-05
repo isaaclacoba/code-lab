@@ -26,6 +26,11 @@ export interface RepoScene {
   commands: string[];
   /** A short caption under the board, e.g. "main has not moved". */
   note?: string;
+  /** How many trailing commands are NEW at this step. The view shows those, so
+   *  the learner can see which command produced the picture - and in particular
+   *  which one moved `HEAD`. Defaults to 1; set 0 for a step that only re-explains
+   *  the previous picture without running anything. */
+  ran?: number;
 }
 
 /** What the view actually renders: the same fields, with the optional ones filled. */
@@ -33,6 +38,8 @@ export interface ResolvedRepoScene {
   files: string[];
   commands: string[];
   note?: string;
+  /** The trailing commands this step ran, already sliced out of `commands`. */
+  ran: string[];
 }
 
 /** Normalise a raw scene for rendering.
@@ -42,9 +49,14 @@ export interface ResolvedRepoScene {
  *  take down a lesson mid-run for a learner who did nothing wrong. */
 export function resolveRepo(scene: RepoScene | undefined): ResolvedRepoScene | null {
   if (!scene || !Array.isArray(scene.commands)) return null;
+  const commands = scene.commands.slice();
+  // Clamped, so an author who writes `ran: 9` on a two-command step gets both
+  // commands rather than a crash or a silently empty strip.
+  const want = scene.ran === undefined ? 1 : Math.max(0, Math.min(scene.ran, commands.length));
   return {
     files: Array.isArray(scene.files) ? scene.files.slice() : [],
-    commands: scene.commands.slice(),
+    commands,
     note: scene.note,
+    ran: want === 0 ? [] : commands.slice(commands.length - want),
   };
 }

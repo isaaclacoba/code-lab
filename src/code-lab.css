@@ -640,6 +640,7 @@
 .cl-tr .cl-tr-cap,
 .cl-tx .cl-tx-cap,
 .cl-rg .cl-rg-cap,
+.cl-rp .cl-rp-cap,
 .cl-pb .cl-pb-cap {
   display: block;
   font-family: var(--cl-mono);
@@ -1440,4 +1441,25 @@
   font: inherit;
   caret-color: var(--clt-caret);
   outline: none;
+}
+
+/* --- repo scene: a git repository as one step of an explainer -------------
+   The command strip sits above the board: the learner reads what was run, then
+   sees where it left HEAD. Commands are literal text a learner retypes, so they
+   are monospaced and never wrapped mid-token. */
+.cl-rp-ran {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.cl-rp-cmd {
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 13px);
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 5px;
+  padding: 3px 8px;
+  white-space: nowrap;
 }

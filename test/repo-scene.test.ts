@@ -52,3 +52,31 @@ test("a step survives the deep clone the stepper puts every step through", () =>
   assert.deepEqual(out.files, ["cat.txt"], "files survive the clone");
   assert.deepEqual(out.commands, ["git add cat.txt", 'git commit -m "add cat"'], "commands survive the clone");
 });
+
+// --- which commands a step shows -------------------------------------------
+// A step's picture changes and nothing says why. The strip above the board names
+// the command that caused it - which is the only way a learner can see WHAT MOVED
+// HEAD, rather than noticing after the fact that it sits somewhere new.
+test("a step shows its last command by default", () => {
+  const out = resolveRepo({ commands: ["git init", "git switch feature"] })!;
+  assert.deepEqual(out.ran, ["git switch feature"]);
+});
+
+test("a step can show several trailing commands", () => {
+  const out = resolveRepo({ commands: ["git init", "git add a", "git commit -m \"x\""], ran: 2 })!;
+  assert.deepEqual(out.ran, ["git add a", 'git commit -m "x"']);
+});
+
+test("a step that only re-explains the previous picture shows nothing", () => {
+  const out = resolveRepo({ commands: ["git init"], ran: 0 })!;
+  assert.deepEqual(out.ran, []);
+});
+
+test("asking for more commands than exist yields all of them, not a crash", () => {
+  const out = resolveRepo({ commands: ["git init"], ran: 9 })!;
+  assert.deepEqual(out.ran, ["git init"], "clamped to what is there");
+});
+
+test("a negative count is treated as none", () => {
+  assert.deepEqual(resolveRepo({ commands: ["git init"], ran: -3 })!.ran, []);
+});

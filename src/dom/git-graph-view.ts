@@ -369,6 +369,11 @@ export class GitGraph {
     this.headEl.hidden = false;
     this.headEl.dataset.ref = "HEAD";
     this.headEl.dataset.on = head.on ?? "";
+    // Say what HEAD POINTS AT, not just that it exists. Real git writes
+    // `(HEAD -> main)` in `git log`, so the learner meets the same notation
+    // here; detached is the case worth naming loudest, because it is the one
+    // that surprises people.
+    this.headEl.textContent = head.on ? `HEAD \u2192 ${head.on}` : "HEAD detached";
     this.headEl.title = head.on ? `HEAD -> ${head.on}` : "HEAD (detached)";
     this.headEl.classList.toggle("is-detached", head.on === undefined);
     this.headEl.classList.toggle("cl-git-ghost", this.ghost.has(head.commit));
