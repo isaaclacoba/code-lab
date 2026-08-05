@@ -66,3 +66,33 @@ test("a bullet run ends when normal text resumes", () => {
 test("empty input yields empty string", () => {
   assert.equal(renderNarration(""), "");
 });
+
+// --- emphasis around a code chip -------------------------------------------
+// Reported from a live lesson: "**both of them changed `cat.txt`**" rendered the
+// asterisks as literal text. Emphasis used to run on the segments BETWEEN code
+// spans, so an opening `**` before a chip and its closing `**` after one landed
+// in different segments and neither matched.
+test("bold can wrap a code chip", () => {
+  const html = renderNarration("Read what each commit touched: **both changed `cat.txt`**.");
+  assert.match(html, /<strong>both changed <code>cat\.txt<\/code><\/strong>/);
+  assert.doesNotMatch(html, /\*\*/, "no raw asterisks reach the page");
+});
+
+test("italic can wrap a code chip too", () => {
+  assert.match(renderNarration("*see `main`*"), /<em>see <code>main<\/code><\/em>/);
+});
+
+test("an asterisk INSIDE a code chip stays literal", () => {
+  const html = renderNarration("run `a * b` twice");
+  assert.match(html, /<code>a \* b<\/code>/);
+  assert.doesNotMatch(html, /<em>/, "a multiplication is not emphasis");
+});
+
+test("bold still works with no code chip in sight", () => {
+  assert.match(renderNarration("**nothing was added**"), /<strong>nothing was added<\/strong>/);
+});
+
+test("two separate chips inside one bold span both survive", () => {
+  const html = renderNarration("**`a` and `b`**");
+  assert.match(html, /<strong><code>a<\/code> and <code>b<\/code><\/strong>/);
+});
