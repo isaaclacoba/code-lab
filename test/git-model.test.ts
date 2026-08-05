@@ -15,6 +15,9 @@ import {
   reset,
   revParse,
   revList,
+  edit,
+  fileAt,
+  treeAt,
   type RepoState,
 } from "../src/core/git-model.ts";
 
@@ -45,7 +48,7 @@ test("init makes an unborn main branch with no refs", () => {
 
 test("the first commit is born with empty parents and clears the index", () => {
   const staged = stage(addFiles(init(), ["a.txt"]).state, ["a.txt"]);
-  assert.equal(staged.state.index.get("a.txt"), "staged");
+  assert.equal(staged.state.index.has("a.txt"), true);
   const r = commit(staged.state, "first");
   assert.equal(r.effect.kind, "commit");
   const id = head(r.state)!;
@@ -65,10 +68,10 @@ test("stage removes a path from the worktree", () => {
   let s = init();
   s = commitFiles(s, "c1", ["a.txt"]);
   // simulate an unstaged edit, then stage it
-  s = { ...s, worktree: new Map([["a.txt", "modified"]]) } as RepoState;
+  s = { ...s, worktree: new Map([["a.txt", { status: "modified", text: "" }]]) } as RepoState;
   const r = stage(s, ["a.txt"]);
   assert.equal(r.state.worktree.has("a.txt"), false);
-  assert.equal(r.state.index.get("a.txt"), "staged");
+  assert.equal(r.state.index.has("a.txt"), true);
 });
 
 // --- files that exist but git is not tracking yet --------------------------
@@ -77,7 +80,11 @@ test("addFiles seeds each path into the working tree as untracked", () => {
   const r = addFiles(init(), ["cat.txt", "dog.txt", "notes.md"]);
   assert.deepEqual(
     [...r.state.worktree.entries()].sort(),
-    [["cat.txt", "untracked"], ["dog.txt", "untracked"], ["notes.md", "untracked"]],
+    [
+      ["cat.txt", { status: "untracked", text: "" }],
+      ["dog.txt", { status: "untracked", text: "" }],
+      ["notes.md", { status: "untracked", text: "" }],
+    ],
   );
   assert.equal(r.state.index.size, 0, "seeding a file does not stage it");
   assert.equal(r.effect.kind, "none");
@@ -88,7 +95,7 @@ test("addFiles is idempotent and does not mutate the input", () => {
   const once = addFiles(s0, ["cat.txt"]).state;
   const twice = addFiles(once, ["cat.txt", "cat.txt"]).state;
   assert.equal(twice.worktree.size, 1);
-  assert.equal(twice.worktree.get("cat.txt"), "untracked");
+  assert.equal(twice.worktree.get("cat.txt")?.status, "untracked");
   assert.equal(s0.worktree.size, 0, "the input state is untouched");
   assert.notEqual(once.worktree, s0.worktree, "worktree Map is a fresh instance");
 });
@@ -96,20 +103,20 @@ test("addFiles is idempotent and does not mutate the input", () => {
 test("addFiles leaves a staged or a modified path exactly as it is", () => {
   let s = addFiles(init(), ["cat.txt"]).state;
   s = stage(s, ["cat.txt"]).state;
-  s = { ...s, worktree: new Map([["dog.txt", "modified"]]) } as RepoState;
+  s = { ...s, worktree: new Map([["dog.txt", { status: "modified", text: "" }]]) } as RepoState;
 
   const r = addFiles(s, ["cat.txt", "dog.txt"]).state;
-  assert.equal(r.index.get("cat.txt"), "staged", "a staged path stays staged");
+  assert.equal(r.index.has("cat.txt"), true, "a staged path stays staged");
   assert.equal(r.worktree.has("cat.txt"), false, "and does not reappear in the tree");
-  assert.equal(r.worktree.get("dog.txt"), "modified", "a modified path is not downgraded");
+  assert.equal(r.worktree.get("dog.txt")?.status, "modified", "a modified path is not downgraded");
 });
 
 test("stage moves an untracked path into the index and out of the working tree", () => {
   const s = addFiles(init(), ["cat.txt", "dog.txt"]).state;
   const r = stage(s, ["cat.txt"]).state;
-  assert.equal(r.index.get("cat.txt"), "staged");
+  assert.equal(r.index.has("cat.txt"), true);
   assert.equal(r.worktree.has("cat.txt"), false);
-  assert.equal(r.worktree.get("dog.txt"), "untracked", "the unchosen file stays put");
+  assert.equal(r.worktree.get("dog.txt")?.status, "untracked", "the unchosen file stays put");
 });
 
 test("stage of a path git has never seen throws the pathspec error", () => {
@@ -127,7 +134,7 @@ test("staging an already-staged path is fine", () => {
   let s = addFiles(init(), ["cat.txt"]).state;
   s = stage(s, ["cat.txt"]).state;
   const r = stage(s, ["cat.txt"]).state;
-  assert.equal(r.index.get("cat.txt"), "staged");
+  assert.equal(r.index.has("cat.txt"), true);
   assert.equal(r.index.size, 1);
 });
 
@@ -140,7 +147,10 @@ test("commit takes exactly the index; untracked files stay in the working tree",
   assert.equal(r.index.size, 0);
   assert.deepEqual(
     [...r.worktree.entries()].sort(),
-    [["dog.txt", "untracked"], ["notes.md", "untracked"]],
+    [
+      ["dog.txt", { status: "untracked", text: "" }],
+      ["notes.md", { status: "untracked", text: "" }],
+    ],
   );
 });
 
@@ -337,24 +347,24 @@ test("reset --soft/--mixed/--hard differ in index and worktree", () => {
   s = commitFiles(s, "c2", ["b"]);
   // now stage something and leave an unstaged edit
   s = stage(addFiles(s, ["staged.txt"]).state, ["staged.txt"]).state;
-  s = { ...s, worktree: new Map([["dirty.txt", "modified"]]) } as RepoState;
+  s = { ...s, worktree: new Map([["dirty.txt", { status: "modified", text: "" }]]) } as RepoState;
 
   const soft = reset(s, "soft", c1);
   assert.equal(soft.effect.kind, "reset");
   assert.equal(soft.effect.kind === "reset" && soft.effect.mode, "soft");
   assert.equal(soft.state.refs.get("refs/heads/main"), c1);
-  assert.equal(soft.state.index.get("staged.txt"), "staged", "soft keeps the index");
-  assert.equal(soft.state.worktree.get("dirty.txt"), "modified", "soft keeps the worktree");
+  assert.equal(soft.state.index.has("staged.txt"), true, "soft keeps the index");
+  assert.equal(soft.state.worktree.get("dirty.txt")?.status, "modified", "soft keeps the worktree");
 
   const mixed = reset(s, "mixed", c1);
   assert.equal(mixed.state.index.size, 0, "mixed unstages the index");
-  assert.equal(mixed.state.worktree.get("staged.txt"), "untracked", "unstaging a never-committed file leaves it untracked");
-  assert.equal(mixed.state.worktree.get("dirty.txt"), "modified", "mixed keeps other worktree edits");
+  assert.equal(mixed.state.worktree.get("staged.txt")?.status, "untracked", "unstaging a never-committed file leaves it untracked");
+  assert.equal(mixed.state.worktree.get("dirty.txt")?.status, "modified", "mixed keeps other worktree edits");
 
   const hard = reset(s, "hard", c1);
   assert.equal(hard.state.index.size, 0, "hard clears the index");
   assert.equal(hard.state.worktree.get("dirty.txt"), undefined, "hard throws away tracked edits");
-  assert.equal(hard.state.worktree.get("staged.txt"), "untracked", "hard does not delete an untracked file");
+  assert.equal(hard.state.worktree.get("staged.txt")?.status, "untracked", "hard does not delete an untracked file");
 });
 
 test("neither --mixed nor --hard deletes an untracked file", () => {
@@ -367,16 +377,16 @@ test("neither --mixed nor --hard deletes an untracked file", () => {
 
   const mixed = reset(s, "mixed", c1);
   assert.equal(mixed.state.index.size, 0, "mixed still unstages the index");
-  assert.equal(mixed.state.worktree.get("staged.txt"), "untracked", "never committed, so it goes back to untracked");
-  assert.equal(mixed.state.worktree.get("notes.md"), "untracked", "an untracked file is left alone");
+  assert.equal(mixed.state.worktree.get("staged.txt")?.status, "untracked", "never committed, so it goes back to untracked");
+  assert.equal(mixed.state.worktree.get("notes.md")?.status, "untracked", "an untracked file is left alone");
 
   // Real `git reset --hard` throws away YOUR uncommitted changes to files git
   // tracks. A file git never knew about is not git's to delete - which matters
   // here, because a lesson seeds its folder as untracked files.
   const hard = reset(s, "hard", c1);
   assert.equal(hard.state.index.size, 0, "hard still clears the index");
-  assert.equal(hard.state.worktree.get("notes.md"), "untracked", "hard leaves an untracked file alone");
-  assert.equal(hard.state.worktree.get("staged.txt"), "untracked", "an unstaged, never-committed file survives too");
+  assert.equal(hard.state.worktree.get("notes.md")?.status, "untracked", "hard leaves an untracked file alone");
+  assert.equal(hard.state.worktree.get("staged.txt")?.status, "untracked", "an unstaged, never-committed file survives too");
 });
 
 // --- rev-parse -------------------------------------------------------------
@@ -530,7 +540,7 @@ test("reset --soft brings the undone commit's files back to the index", () => {
   s = commit(s, "oops").state;
 
   const soft = reset(s, "soft", keep).state;
-  assert.equal(soft.index.get("notes.md"), "staged", "the undone file is staged again");
+  assert.equal(soft.index.has("notes.md"), true, "the undone file is staged again");
   assert.equal(soft.worktree.has("notes.md"), false, "and it is not also loose in the folder");
 });
 
@@ -546,7 +556,7 @@ test("reset --mixed puts the undone commit's files back in the folder", () => {
   assert.equal(mixed.index.size, 0, "nothing left staged");
   // notes.md is in no remaining commit, so it is back to being untracked -
   // exactly where it started, which is what makes the undo complete.
-  assert.equal(mixed.worktree.get("notes.md"), "untracked");
+  assert.equal(mixed.worktree.get("notes.md")?.status, "untracked");
 });
 
 test("reset --hard throws the undone commit's files away", () => {
@@ -561,3 +571,121 @@ test("reset --hard throws the undone commit's files away", () => {
   assert.equal(hard.index.size, 0);
   assert.equal(hard.worktree.has("notes.md"), false, "--hard is the destructive one");
 });
+
+// --- file text: a commit is a snapshot ------------------------------------
+
+test("a commit records the WHOLE tree, not only the file it touched", () => {
+  let s = addFiles(init(), [{ path: "cat.txt", text: "meow" }]).state;
+  s = commit(stage(s, ["cat.txt"]).state, "add cat").state;
+  s = addFiles(s, [{ path: "dog.txt", text: "woof" }]).state;
+  s = commit(stage(s, ["dog.txt"]).state, "add dog").state;
+
+  const second = s.commits.get(head(s)!)!;
+  // The second commit touched only dog.txt, but it HOLDS both files. That is
+  // the difference between a change and a snapshot, and a lesson asks it.
+  assert.deepEqual(second.paths, ["dog.txt"], "touched: only the dog");
+  assert.deepEqual(
+    [...second.blobs.entries()].sort(),
+    [["cat.txt", "meow"], ["dog.txt", "woof"]],
+    "held: the whole tree",
+  );
+});
+
+test("paths stays derivable from blobs - every path it names is in the tree", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "one" }, { path: "b.txt", text: "two" }]).state;
+  s = commit(stage(s, ["a.txt", "b.txt"]).state, "both").state;
+  s = edit(s, "a.txt", "one changed").state;
+  s = commit(stage(s, ["a.txt"]).state, "edit a").state;
+
+  for (const c of s.commits.values()) {
+    for (const p of c.paths) {
+      assert.equal(c.blobs.has(p), true, `${c.message} names ${p} but does not hold it`);
+    }
+  }
+});
+
+test("fileAt reads a file as it stood at an older commit", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "first" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "first").state;
+  const older = head(s)!;
+  s = edit(s, "a.txt", "second").state;
+  s = commit(stage(s, ["a.txt"]).state, "second").state;
+
+  assert.equal(fileAt(s, older, "a.txt"), "first");
+  assert.equal(fileAt(s, head(s), "a.txt"), "second");
+  assert.equal(fileAt(s, older, "missing.txt"), null);
+});
+
+test("editing a file after staging it leaves the staged copy alone", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "staged version" }]).state;
+  s = stage(s, ["a.txt"]).state;
+  s = edit(s, "a.txt", "newer version").state;
+
+  assert.equal(s.index.get("a.txt"), "staged version", "the index kept what you added");
+  assert.equal(s.worktree.get("a.txt")?.text, "newer version", "the folder moved on");
+  const c = commit(s, "commit the staged one").state;
+  assert.equal(fileAt(c, head(c), "a.txt"), "staged version");
+});
+
+test("reset --soft hands the text back, not just the path", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "base" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "base").state;
+  s = edit(s, "a.txt", "work in progress").state;
+  s = commit(stage(s, ["a.txt"]).state, "wip").state;
+
+  const back = reset(s, "soft", "HEAD~1").state;
+  assert.equal(back.index.get("a.txt"), "work in progress", "the work is still there to re-commit");
+  assert.equal(treeAt(back, head(back)!).get("a.txt"), "base", "and HEAD is back on base");
+});
+
+// --- merging looks INSIDE the file ----------------------------------------
+
+/** Commit `text` to `path` on the current branch. */
+function put(s: RepoState, path: string, text: string, message: string): RepoState {
+  const edited = edit(s, path, text).state;
+  return commit(stage(edited, [path]).state, message).state;
+}
+
+test("two branches editing different parts of ONE file merge cleanly", () => {
+  let s = addFiles(init(), [{ path: "notes.md", text: "one\ntwo\nthree" }]).state;
+  s = commit(stage(s, ["notes.md"]).state, "base").state;
+
+  s = branch(s, "feature").state;
+  s = put(s, "notes.md", "ONE CHANGED\ntwo\nthree", "edit the top");
+  s = checkout(s, "feature").state;
+  s = put(s, "notes.md", "one\ntwo\nTHREE CHANGED", "edit the bottom");
+  s = checkout(s, "main").state;
+
+  const r = merge(s, "feature");
+  assert.notEqual(r.effect.kind, "conflict", "same file, different lines - git merges this");
+  assert.equal(r.state.merge, undefined, "no conflict state to resolve");
+  assert.equal(
+    fileAt(r.state, headOf(r.state), "notes.md"),
+    "ONE CHANGED\ntwo\nTHREE CHANGED",
+    "both edits survive in the merged file",
+  );
+});
+
+test("two branches editing the SAME line conflict, and the file gets markers", () => {
+  let s = addFiles(init(), [{ path: "notes.md", text: "one\nshared\nthree" }]).state;
+  s = commit(stage(s, ["notes.md"]).state, "base").state;
+
+  s = branch(s, "feature").state;
+  s = put(s, "notes.md", "one\nmain wins\nthree", "main edits the middle");
+  s = checkout(s, "feature").state;
+  s = put(s, "notes.md", "one\nfeature wins\nthree", "feature edits the middle");
+  s = checkout(s, "main").state;
+
+  const r = merge(s, "feature");
+  assert.equal(r.effect.kind, "conflict");
+  const inFolder = r.state.worktree.get("notes.md")!.text;
+  assert.match(inFolder, /<<<<<<< main/);
+  assert.match(inFolder, /\|\|\|\|\|\|\| ancestor/);
+  assert.match(inFolder, /shared/, "the ancestor's line is shown - that is diff3");
+  assert.match(inFolder, />>>>>>> feature/);
+});
+
+/** HEAD's commit, for the merge tests above. */
+function headOf(s: RepoState): string {
+  return head(s)!;
+}

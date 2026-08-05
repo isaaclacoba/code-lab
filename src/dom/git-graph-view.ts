@@ -445,7 +445,7 @@ export class GitGraph {
   private renderZones(state: RepoState, animate: boolean): void {
     const tree = [...state.worktree.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([path, status]) => ({ path, status }));
+      .map(([path, entry]) => ({ path, status: entry.status }));
     const staged = [...state.index.keys()].sort();
     const committed = this.reachablePaths(state);
     for (const f of tree) committed.delete(f.path);

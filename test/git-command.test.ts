@@ -222,8 +222,8 @@ test("status separates untracked files from modified ones", () => {
   const s: RepoState = {
     ...init(),
     worktree: new Map([
-      ["edited.txt", "modified"],
-      ["fresh.txt", "untracked"],
+      ["edited.txt", { status: "modified", text: "" }],
+      ["fresh.txt", { status: "untracked", text: "" }],
     ]),
   };
   const out = run("git status", s).output;
@@ -244,8 +244,8 @@ test("staging an untracked file clears it from the status listing", () => {
 test("status never sends the learner to a command this git does not have", () => {
   const s: RepoState = {
     ...init(),
-    index: new Map([["s.txt", "staged"]]),
-    worktree: new Map([["w.txt", "modified"]]),
+    index: new Map([["s.txt", ""]]),
+    worktree: new Map([["w.txt", { status: "modified", text: "" }]]),
   };
   const out = run("git status", s).output;
   assert.doesNotMatch(out, /git restore/);

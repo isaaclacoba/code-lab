@@ -231,10 +231,10 @@ function decorate(s: RepoState, id: Hash): string {
  *  model ("modified" only) and the seeded one that adds "untracked". */
 type WorktreeStatus = "modified" | "untracked";
 
-/** The worktree, widened to the shape status reads. `ReadonlyMap` is covariant
- *  in its value, so this is a plain assignment either way. */
+/** The worktree, narrowed to the status shape this file reads. The model's
+ *  entries also carry the file text, which `git status` has no use for. */
 function worktreeOf(s: RepoState): ReadonlyMap<string, WorktreeStatus> {
-  return s.worktree;
+  return new Map([...s.worktree].map(([p, e]) => [p, e.status] as const));
 }
 
 /** `git status` - a plausible subset of real git's porcelain. */

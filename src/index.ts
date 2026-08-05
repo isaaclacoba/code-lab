@@ -30,8 +30,13 @@ export {
   tag as gitTag, checkout as gitCheckout, merge as gitMerge, mergeAbort as gitMergeAbort,
   resolvePaths as gitResolvePaths, reset as gitReset, revParse as gitRevParse,
   revList as gitRevList, GitError,
+  edit as gitEdit, fileAt as gitFileAt, treeAt as gitTreeAt,
 } from "./core/git-model.js";
-export type { OpResult, Effect } from "./core/git-model.js";
+export type { OpResult, Effect, WorktreeEntry, WorktreeStatus } from "./core/git-model.js";
+// Text merging: the course grades and displays conflicts, so the merge itself
+// has to be reachable from the bundle.
+export { merge3 as gitMerge3, splitLines as gitSplitLines, joinLines as gitJoinLines } from "./core/text-merge.js";
+export type { Merge3Result, MergeLabels } from "./core/text-merge.js";
 export { run as gitRun } from "./core/git-cli.js";
 // git as a command set the terminal Shell can register. The shell owns tokenizing,
 // help and unknown-command handling; this is only the git subcommands.

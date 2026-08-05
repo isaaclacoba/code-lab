@@ -13,12 +13,20 @@
 /** A commit id: 7 lowercase hex chars. Display-only; never graded. */
 export type Hash = string;
 
-/** One commit. `paths` are the files this commit touched (no contents). */
+/** One commit.
+ *
+ *  `blobs` is the WHOLE tree at this commit, not just what changed - a commit is
+ *  a snapshot, and the model has to say so, because a theory lesson asks exactly
+ *  that question. `paths` is the derived answer to "what did this commit touch?":
+ *  the entries whose text differs from the first parent's. It stays a stored
+ *  field so its three readers (`state-match.js` x2, `git-progress.js`) keep the
+ *  shape they already have. */
 export interface Commit {
   id: Hash;
   parents: Hash[];
   message: string;
   paths: string[];
+  blobs: Map<string, string>;
 }
 
 /** A fully-qualified ref name, e.g. "refs/heads/main" or "refs/tags/v1". */
@@ -36,6 +44,12 @@ export type Head =
  *  map - there is no fourth zone. */
 export type WorktreeStatus = "modified" | "untracked";
 
+/** A file sitting in the working tree: how it stands, plus what is in it. */
+export interface WorktreeEntry {
+  status: WorktreeStatus;
+  text: string;
+}
+
 /** The whole repository state. Pure data; ops clone it. */
 export interface RepoState {
   /** All commits by id, in creation order (Map preserves insertion order). */
@@ -44,11 +58,13 @@ export interface RepoState {
   refs: Map<RefName, Hash>;
   /** Where HEAD points. */
   head: Head;
-  /** The staging area: paths marked "staged" by `stage` (git add). */
-  index: Map<string, "staged">;
+  /** The staging area: path -> the text `git add` captured. A staged file is a
+   *  snapshot of the content at the moment you added it, which is why editing
+   *  after `add` leaves the file in both zones at once. */
+  index: Map<string, string>;
   /** The working tree: files that exist but are not staged - either "modified"
    *  (tracked, edited) or "untracked" (git is not watching it yet). */
-  worktree: Map<string, WorktreeStatus>;
+  worktree: Map<string, WorktreeEntry>;
   /** Set only mid-merge-conflict: the other side plus the paths still in conflict. */
   merge?: { mergeHead: Hash; conflicted: string[] };
   /** Monotonic commit counter, folded into every hash preimage. */
@@ -79,6 +95,8 @@ export class GitError extends Error {
   }
 }
 
+import { merge3 } from "./text-merge.js";
+
 // --- internals -------------------------------------------------------------
 
 /** FNV-1a 32-bit over a string. Self-contained; no crypto, no timestamp. */
@@ -108,12 +126,20 @@ function cloneState(s: RepoState): RepoState {
         ? { kind: "branch", name: s.head.name }
         : { kind: "detached", commit: s.head.commit },
     index: new Map(s.index),
-    worktree: new Map(s.worktree),
+    worktree: new Map(
+      [...s.worktree].map(([p, e]) => [p, { status: e.status, text: e.text }] as const),
+    ),
     merge: s.merge
       ? { mergeHead: s.merge.mergeHead, conflicted: [...s.merge.conflicted] }
       : undefined,
     seq: s.seq,
   };
+}
+
+/** The short name of the branch HEAD is on, for a conflict marker. Null when
+ *  HEAD is detached - there is no branch name to write. */
+function refLabel(s: RepoState): string | null {
+  return s.head.kind === "branch" ? s.head.name.replace(/^refs\/heads\//, "") : null;
 }
 
 /** The commit HEAD currently points at, or null if the branch is unborn. */
@@ -191,6 +217,30 @@ function mergeCommitPaths(s: RepoState, h: Hash, o: Hash): string[] {
   return [...new Set([...hp, ...op])];
 }
 
+/** The whole tree a commit recorded - a fresh Map, safe for the caller to edit.
+ *  An unborn HEAD has an empty tree. */
+export function treeAt(s: RepoState, h: Hash | null): Map<string, string> {
+  if (h === null) return new Map();
+  const c = s.commits.get(h);
+  return c ? new Map(c.blobs) : new Map();
+}
+
+/** What one file held at a commit, or null if that commit did not have it. */
+export function fileAt(s: RepoState, h: Hash | null, path: string): string | null {
+  if (h === null) return null;
+  const c = s.commits.get(h);
+  if (!c) return null;
+  return c.blobs.has(path) ? c.blobs.get(path)! : null;
+}
+
+/** The tree a new commit would record: the parent's snapshot with everything
+ *  staged written over it. */
+function treeWithIndex(s: RepoState, parent: Hash | null): Map<string, string> {
+  const blobs = treeAt(s, parent);
+  for (const [p, text] of s.index) blobs.set(p, text);
+  return blobs;
+}
+
 /** First parent of a commit (throws if none). */
 function firstParent(s: RepoState, h: Hash): Hash {
   const c = s.commits.get(h);
@@ -246,15 +296,35 @@ export function init(): RepoState {
 }
 
 /** Lesson setup, NOT a git command: declare that these files exist in the
- *  folder. Each lands in the working tree as "untracked" - git can see it but is
- *  not watching it yet. Idempotent, and a path already staged or already
- *  modified is left exactly as it is. */
-export function addFiles(state: RepoState, paths: string[]): OpResult {
+ *  folder, each with its text. Each lands in the working tree as "untracked" -
+ *  git can see it but is not watching it yet. A bare string means an empty file.
+ *  Idempotent, and a path already staged or already modified is left exactly as
+ *  it is. */
+export function addFiles(
+  state: RepoState,
+  files: Array<string | { path: string; text?: string }>,
+): OpResult {
   const s = cloneState(state);
-  for (const p of paths) {
-    if (s.index.has(p) || s.worktree.has(p)) continue;
-    s.worktree.set(p, "untracked");
+  for (const f of files) {
+    const path = typeof f === "string" ? f : f.path;
+    const text = typeof f === "string" ? "" : (f.text ?? "");
+    if (s.index.has(path) || s.worktree.has(path)) continue;
+    s.worktree.set(path, { status: "untracked", text });
   }
+  return { state: s, effect: { kind: "none" } };
+}
+
+/** Lesson setup or an editor save: put this text in the file. A tracked file
+ *  whose text now differs from HEAD reads as "modified"; a file git has never
+ *  seen stays "untracked". Editing a file that is already staged leaves the
+ *  staged copy alone - that is the whole point of a staging area. */
+export function edit(state: RepoState, path: string, text: string): OpResult {
+  const s = cloneState(state);
+  const tracked = trackedPaths(s, headCommit(s));
+  s.worktree.set(path, {
+    status: tracked.has(path) ? "modified" : "untracked",
+    text,
+  });
   return { state: s, effect: { kind: "none" } };
 }
 
@@ -267,7 +337,9 @@ export function stage(state: RepoState, paths: string[]): OpResult {
     if (!s.worktree.has(p) && !s.index.has(p)) {
       throw new GitError(`fatal: pathspec '${p}' did not match any files`);
     }
-    s.index.set(p, "staged");
+    const entry = s.worktree.get(p);
+    if (entry) s.index.set(p, entry.text);
+    else if (!s.index.has(p)) s.index.set(p, "");
     s.worktree.delete(p);
   }
   return { state: s, effect: { kind: "none" } };
@@ -286,7 +358,9 @@ export function amend(state: RepoState, message?: string): OpResult {
   const msg = message ?? old.message;
   const id = makeHash(parents, msg, s.seq);
   s.seq += 1;
-  s.commits.set(id, { id, parents, message: msg, paths });
+  const blobs = new Map(old.blobs);
+  for (const [p, text] of s.index) blobs.set(p, text);
+  s.commits.set(id, { id, parents, message: msg, paths, blobs });
   moveHead(s, id);
   s.index.clear();
   return { state: s, effect: { kind: "commit", id } };
@@ -301,8 +375,12 @@ export function unstage(state: RepoState, paths: string[]): OpResult {
   const tracked = trackedPaths(s, headCommit(s));
   for (const p of paths) {
     if (!s.index.has(p)) continue;
+    const text = s.index.get(p)!;
     s.index.delete(p);
-    s.worktree.set(p, tracked.has(p) ? "modified" : "untracked");
+    s.worktree.set(p, {
+      status: tracked.has(p) ? "modified" : "untracked",
+      text,
+    });
   }
   return { state: s, effect: { kind: "none" } };
 }
@@ -324,7 +402,12 @@ export function commit(state: RepoState, message: string): OpResult {
     const paths = mergeCommitPaths(s, head, other);
     const id = makeHash(parents, message, s.seq);
     s.seq += 1;
-    s.commits.set(id, { id, parents, message, paths });
+    // The merged tree: our side, with the other side's files written over it,
+    // then whatever the learner staged while resolving.
+    const blobs = treeAt(s, head);
+    for (const [p, text] of treeAt(s, other)) if (!blobs.has(p)) blobs.set(p, text);
+    for (const [p, text] of s.index) blobs.set(p, text);
+    s.commits.set(id, { id, parents, message, paths, blobs });
     moveHead(s, id);
     s.merge = undefined;
     s.index.clear();
@@ -336,7 +419,8 @@ export function commit(state: RepoState, message: string): OpResult {
   const paths = [...s.index.keys()];
   const id = makeHash(parents, message, s.seq);
   s.seq += 1;
-  s.commits.set(id, { id, parents, message, paths });
+  const blobs = treeWithIndex(s, head);
+  s.commits.set(id, { id, parents, message, paths, blobs });
   moveHead(s, id);
   s.index.clear();
   return { state: s, effect: { kind: "commit", id } };
@@ -421,9 +505,42 @@ export function merge(state: RepoState, otherRev: string): OpResult {
   const base = mergeBases(s, h, o)[0] ?? null;
   const hPaths = changedPaths(s, h, base);
   const oPaths = changedPaths(s, o, base);
-  const conflicted = [...hPaths].filter((p) => oPaths.has(p)).sort();
+  const both = [...hPaths].filter((p) => oPaths.has(p)).sort();
+
+  // Both sides touching the same file is not yet a conflict - git looks INSIDE.
+  // Only an overlap is a conflict; two edits in different parts of one file
+  // merge cleanly, and the lesson depends on the learner seeing that.
+  const conflicted: string[] = [];
+  const resolvedText = new Map<string, string>();
+  const markedText = new Map<string, string>();
+  for (const p of both) {
+    const baseText = fileAt(s, base, p) ?? "";
+    const ourText = fileAt(s, h, p) ?? "";
+    const theirText = fileAt(s, o, p) ?? "";
+    if (baseText === "" && ourText === "" && theirText === "") {
+      // No text recorded for this file, so there is nothing to compare. Git
+      // cannot merge what it cannot read, so the file stands as a conflict.
+      conflicted.push(p);
+      continue;
+    }
+    const r = merge3(baseText, ourText, theirText, {
+      ours: refLabel(s) ?? "HEAD",
+      base: "ancestor",
+      theirs: otherRev,
+    });
+    if (r.clean) {
+      resolvedText.set(p, r.text);
+    } else {
+      conflicted.push(p);
+      markedText.set(p, r.text);
+    }
+  }
+
   if (conflicted.length > 0) {
     s.merge = { mergeHead: o, conflicted };
+    // The marked-up file is what the learner opens and edits. Git writes the
+    // markers into the working tree; so does this.
+    for (const [p, text] of markedText) s.worktree.set(p, { status: "modified", text });
     return { state: s, effect: { kind: "conflict", paths: conflicted } };
   }
 
@@ -432,7 +549,14 @@ export function merge(state: RepoState, otherRev: string): OpResult {
   const paths = mergeCommitPaths(s, h, o);
   const id = makeHash(parents, message, s.seq);
   s.seq += 1;
-  s.commits.set(id, { id, parents, message, paths });
+  // A clean merge: our tree, with the files only the other side has written in.
+  const blobs = treeAt(s, h);
+  for (const [p, text] of treeAt(s, o)) {
+    if (!blobs.has(p) || fileAt(s, h, p) === fileAt(s, base, p)) blobs.set(p, text);
+  }
+  // ...and, for a file both sides edited without overlapping, the merged text.
+  for (const [p, text] of resolvedText) blobs.set(p, text);
+  s.commits.set(id, { id, parents, message, paths, blobs });
   moveHead(s, id);
   return { state: s, effect: { kind: "merge", id } };
 }
@@ -473,25 +597,31 @@ export function reset(
   // in the folder for --mixed. That is what makes reset an undo you can act on.
   const undone = before ? changedPaths(s, before, target) : new Set<string>();
   const restingStatus = (p: string): WorktreeStatus => (tracked.has(p) ? "modified" : "untracked");
+  // The text an undone file comes back with is what the commit being undone
+  // held, not what the target holds - undoing a commit hands the work back.
+  const undoneText = (p: string): string =>
+    fileAt(s, before, p) ?? s.index.get(p) ?? s.worktree.get(p)?.text ?? "";
+  const rest = (p: string, text: string) =>
+    s.worktree.set(p, { status: restingStatus(p), text });
 
   if (mode === "soft") {
-    for (const p of undone) s.index.set(p, "staged");
+    for (const p of undone) s.index.set(p, undoneText(p));
   } else if (mode === "mixed") {
     // staged changes become unstaged; worktree otherwise unchanged
-    for (const p of s.index.keys()) s.worktree.set(p, restingStatus(p));
+    for (const [p, text] of s.index) rest(p, text);
     s.index.clear();
-    for (const p of undone) s.worktree.set(p, restingStatus(p));
+    for (const p of undone) rest(p, undoneText(p));
   } else if (mode === "hard") {
     // Throw away staged and tracked-but-uncommitted work. What git never had
     // in a commit is not git's to delete - real `git reset --hard` leaves an
     // untracked file sitting on disk, including one you had merely `git add`ed.
-    const staged = [...s.index.keys()];
+    const staged = [...s.index];
     s.index.clear();
-    for (const [path, status] of [...s.worktree]) {
-      if (status !== "untracked") s.worktree.delete(path);
+    for (const [path, entry] of [...s.worktree]) {
+      if (entry.status !== "untracked") s.worktree.delete(path);
     }
-    for (const path of staged) {
-      if (!tracked.has(path)) s.worktree.set(path, "untracked");
+    for (const [path, text] of staged) {
+      if (!tracked.has(path)) s.worktree.set(path, { status: "untracked", text });
     }
     // --hard is the destructive one: the undone commits' files are simply gone.
     for (const path of undone) if (!tracked.has(path)) s.worktree.delete(path);

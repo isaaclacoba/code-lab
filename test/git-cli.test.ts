@@ -75,14 +75,14 @@ test("git add stages a path with no output", () => {
   const r = run("git add a.txt", withFiles(init(), "a.txt"));
   assert.equal(r.output, "");
   assert.equal(r.effect.kind, "none");
-  assert.equal(r.state.index.get("a.txt"), "staged");
+  assert.equal(r.state.index.has("a.txt"), true);
 });
 
 test("git add . stages every modified worktree path", () => {
-  const start: RepoState = { ...init(), worktree: new Map([["a", "modified"], ["b", "modified"]]) };
+  const start: RepoState = { ...init(), worktree: new Map([["a", { status: "modified", text: "" }], ["b", { status: "modified", text: "" }]]) };
   const r = run("git add .", start);
-  assert.equal(r.state.index.get("a"), "staged");
-  assert.equal(r.state.index.get("b"), "staged");
+  assert.equal(r.state.index.has("a"), true);
+  assert.equal(r.state.index.has("b"), true);
   assert.equal(r.state.worktree.size, 0);
 });
 
@@ -100,7 +100,7 @@ test("status on a fresh repo reports a clean unborn main", () => {
 });
 
 test("status lists staged and unstaged changes", () => {
-  const start: RepoState = { ...init(), index: new Map([["s", "staged"]]), worktree: new Map([["w", "modified"]]) };
+  const start: RepoState = { ...init(), index: new Map([["s", ""]]), worktree: new Map([["w", { status: "modified", text: "" }]]) };
   const out = run("git status", start).output;
   assert.match(out, /Changes to be committed:/);
   assert.match(out, /\tmodified:   s/);
@@ -319,13 +319,13 @@ test("git reset --soft keeps staged files (visible in status)", () => {
 
 test("git reset defaults to --mixed", () => {
   const s = repoWithOneCommit();
-  const s2 = { ...s, index: new Map([["z", "staged" as const]]) };
+  const s2 = { ...s, index: new Map([["z", ""]]) };
   const r = run("git reset", s2);
   assert.equal((r.effect as { mode: string }).mode, "mixed");
   // mixed unstages: z moves from index back to the worktree, and since no
   // commit ever recorded it, it lands there untracked.
   assert.equal(r.state.index.size, 0);
-  assert.equal(r.state.worktree.get("z"), "untracked");
+  assert.equal(r.state.worktree.get("z")?.status, "untracked");
 });
 
 // --- tag -------------------------------------------------------------------
@@ -438,7 +438,7 @@ test("an empty line is a no-op", () => {
 test("git init keeps the files already sitting in the folder", () => {
   const seeded = addFiles(init(), ["cat.txt"]).state;
   const after = run("git init", seeded);
-  assert.equal(after.state.worktree.get("cat.txt"), "untracked");
+  assert.equal(after.state.worktree.get("cat.txt")?.status, "untracked");
   // and the freshly-initialised repo can then add them
   assert.equal(run("git add cat.txt", after.state).error, undefined);
 });
@@ -449,8 +449,8 @@ test("git reset <file> unstages it, the way the status hint says", () => {
   const after = run("git reset notes.md", s);
   assert.equal(after.error, undefined);
   assert.equal(after.state.index.has("notes.md"), false, "unstaged");
-  assert.equal(after.state.worktree.get("notes.md"), "untracked", "back in the folder");
-  assert.equal(after.state.index.get("cat.txt"), "staged", "the other file is untouched");
+  assert.equal(after.state.worktree.get("notes.md")?.status, "untracked", "back in the folder");
+  assert.equal(after.state.index.has("cat.txt"), true, "the other file is untouched");
 });
 
 test("git reset <commit> still moves HEAD rather than unstaging", () => {
@@ -463,7 +463,7 @@ test("git reset <commit> still moves HEAD rather than unstaging", () => {
   const after = run("git reset HEAD~1", s);
   assert.equal(after.error, undefined);
   // the undone commit's file comes back to the folder, so the undo is complete
-  assert.equal(after.state.worktree.get("notes.md"), "untracked");
+  assert.equal(after.state.worktree.get("notes.md")?.status, "untracked");
 });
 
 test("git init in a repository that already exists keeps the history", () => {

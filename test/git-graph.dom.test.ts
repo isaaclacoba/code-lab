@@ -112,7 +112,7 @@ test("the three zones list the right files: modified, staged, committed", () => 
   // logo.png is committed; app.js is modified in the worktree; readme.md is staged.
   let s = init();
   s = commitFiles(s, "init", ["logo.png"]);
-  s = { ...s, worktree: new Map([["app.js", "modified"]]) } as RepoState;
+  s = { ...s, worktree: new Map([["app.js", { status: "modified", text: "" }]]) } as RepoState;
   s = stage(addFiles(s, ["readme.md"]).state, ["readme.md"]).state;
 
   const { view, host } = mount(s);
@@ -130,7 +130,7 @@ test("the working tree draws an untracked file differently from a modified one",
   let s = init();
   s = commitFiles(s, "init", ["app.js"]);
   s = addFiles(s, ["cat.txt", "notes.md"]).state;
-  s = { ...s, worktree: new Map([...s.worktree, ["app.js", "modified"]]) } as RepoState;
+  s = { ...s, worktree: new Map([...s.worktree, ["app.js", { status: "modified", text: "" }]]) } as RepoState;
 
   const { view, host } = mount(s);
   const rows = [...host.querySelectorAll(".cl-git-zone.is-tree .cl-git-file")];
@@ -175,7 +175,7 @@ test("an empty working tree renders no file rows, leaving the em-dash empty stat
 test("a committed path currently modified shows in the tree, not the repository", () => {
   let s = init();
   s = commitFiles(s, "init", ["app.js"]);
-  s = { ...s, worktree: new Map([["app.js", "modified"]]) } as RepoState;
+  s = { ...s, worktree: new Map([["app.js", { status: "modified", text: "" }]]) } as RepoState;
 
   const { view, host } = mount(s);
   const text = (sel: string) =>
