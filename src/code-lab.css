@@ -1238,6 +1238,20 @@
 .cl-git .cl-git-hash { font: 11.5px/1 var(--cl-mono, ui-monospace, Menlo, monospace); fill: var(--clg-muted); }
 .cl-git .cl-git-msg { font-size: 12px; fill: var(--clg-ink); }
 
+/* A merge draws a curve from one lane to another, and that curve passes straight
+   through the row of hash/message labels below the dots. The labels are painted
+   after the edges so they already win on z-order, but a 2.5px line crossing the
+   glyphs still shreds them. Painting the stroke FIRST gives each label a halo in
+   the board's own background colour, so the curve stops short of the text
+   instead of cutting through it. */
+.cl-git .cl-git-hash,
+.cl-git .cl-git-msg {
+  paint-order: stroke fill;
+  stroke: var(--clg-bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
 /* --- ref/HEAD chips (HTML overlay over the SVG) --- */
 .cl-git .cl-git-chips { position: absolute; inset: 0; pointer-events: none; }
 .cl-git .cl-git-chipstack {
