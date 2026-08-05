@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { init, addFiles, type RepoState } from "../src/core/git-model.ts";
+import { init, addFiles, stage, commit, edit, type RepoState } from "../src/core/git-model.ts";
 import { run } from "../src/core/git-cli.ts";
 import { Shell } from "../src/terminal/shell.ts";
 import { createGitCommand, gitSubcommands } from "../src/terminal/commands/git.ts";
@@ -249,4 +249,37 @@ test("status never sends the learner to a command this git does not have", () =>
   };
   const out = run("git status", s).output;
   assert.doesNotMatch(out, /git restore/);
+});
+
+// --- git diff --------------------------------------------------------------
+
+test("git diff shows an unstaged edit, line by line", () => {
+  let s = addFiles(init(), [{ path: "notes.md", text: "one\ntwo\nthree" }]).state;
+  s = commit(stage(s, ["notes.md"]).state, "base").state;
+  s = edit(s, "notes.md", "one\nTWO\nthree").state;
+
+  const out = run("git diff", s).output;
+  assert.match(out, /diff --git a\/notes\.md b\/notes\.md/);
+  assert.match(out, /^-two$/m);
+  assert.match(out, /^\+TWO$/m);
+  assert.match(out, /^ one$/m, "unchanged lines are shown as context");
+});
+
+test("git diff says nothing about a file git is not tracking", () => {
+  const s = addFiles(init(), [{ path: "scratch.txt", text: "just sitting here" }]).state;
+  assert.equal(run("git diff", s).output, "", "untracked is not 'changed' - git has nothing to compare");
+});
+
+test("git diff --staged shows what is staged but not yet committed", () => {
+  let s = addFiles(init(), [{ path: "notes.md", text: "one" }]).state;
+  s = commit(stage(s, ["notes.md"]).state, "base").state;
+  s = stage(edit(s, "notes.md", "one\ntwo").state, ["notes.md"]).state;
+
+  assert.equal(run("git diff", s).output, "", "nothing left unstaged");
+  const staged = run("git diff --staged", s).output;
+  assert.match(staged, /^\+two$/m);
+});
+
+test("git diff is listed in git help", () => {
+  assert.match(run("git help", init()).output, /diff\s+Show what changed/);
 });

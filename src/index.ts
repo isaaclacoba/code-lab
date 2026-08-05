@@ -37,6 +37,7 @@ export type { OpResult, Effect, WorktreeEntry, WorktreeStatus } from "./core/git
 // has to be reachable from the bundle.
 export { merge3 as gitMerge3, splitLines as gitSplitLines, joinLines as gitJoinLines } from "./core/text-merge.js";
 export type { Merge3Result, MergeLabels } from "./core/text-merge.js";
+export { formatFileDiff as gitFormatFileDiff, diffLines as gitDiffLines } from "./core/text-diff.js";
 export { run as gitRun } from "./core/git-cli.js";
 // git as a command set the terminal Shell can register. The shell owns tokenizing,
 // help and unknown-command handling; this is only the git subcommands.

@@ -31,11 +31,13 @@ import {
   reset,
   revParse,
   revList,
+  fileAt,
   type RepoState,
   type Effect,
   type Hash,
 } from "../../core/git-model.js";
 import { editDistance, type ShellCommand, type ShellResult } from "../shell.js";
+import { formatFileDiff } from "../../core/text-diff.js";
 
 /** The uniform result of running one git command line. */
 export interface GitRunResult {
@@ -74,6 +76,11 @@ const SUBCOMMANDS: readonly SubcommandDoc[] = [
     name: "status",
     summary: "Show what is staged, changed, and untracked.",
     usage: ["status"],
+  },
+  {
+    name: "diff",
+    summary: "Show what changed, line by line.",
+    usage: ["diff", "diff --staged", "diff <commit>"],
   },
   {
     name: "add",
@@ -235,6 +242,32 @@ type WorktreeStatus = "modified" | "untracked";
  *  entries also carry the file text, which `git status` has no use for. */
 function worktreeOf(s: RepoState): ReadonlyMap<string, WorktreeStatus> {
   return new Map([...s.worktree].map(([p, e]) => [p, e.status] as const));
+}
+
+/** `git diff`. With no argument it answers "what have I changed but not
+ *  staged?" - so untracked files are not in it, exactly as in real git, because
+ *  git is not tracking them to compare against. `--staged` answers the other
+ *  half: what is staged but not yet committed. */
+function diffText(s: RepoState, staged: boolean, rev?: string): string {
+  const head = headCommit(s);
+  const chunks: string[] = [];
+
+  if (staged) {
+    for (const [path, text] of [...s.index].sort((a, b) => a[0].localeCompare(b[0]))) {
+      const d = formatFileDiff(path, fileAt(s, head, path) ?? "", text);
+      if (d) chunks.push(d);
+    }
+    return chunks.join("\n");
+  }
+
+  const against = rev ? revParse(s, rev) : head;
+  for (const [path, entry] of [...s.worktree].sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (!rev && entry.status === "untracked") continue;
+    const before = !rev && s.index.has(path) ? s.index.get(path)! : (fileAt(s, against, path) ?? "");
+    const d = formatFileDiff(path, before, entry.text);
+    if (d) chunks.push(d);
+  }
+  return chunks.join("\n");
 }
 
 /** `git status` - a plausible subset of real git's porcelain. */
@@ -408,6 +441,12 @@ export function runGit(argv: string[], state: RepoState): GitRunResult {
 
       case "status": {
         return ok(state, statusText(state), { kind: "none" });
+      }
+
+      case "diff": {
+        const staged = args.includes("--staged") || args.includes("--cached");
+        const rev = args.find((a) => !a.startsWith("-"));
+        return ok(state, diffText(state, staged, rev), { kind: "none" });
       }
 
       case "commit": {
