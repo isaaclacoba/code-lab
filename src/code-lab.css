@@ -1279,7 +1279,11 @@
   pointer-events: auto;
   white-space: nowrap;
 }
-.cl-git .cl-git-chip.is-tag { background: var(--clg-tag); }
+/* Amber is chosen to read as a TAG against the graph, but under white 11px text
+   it is 2.15:1 - the same trap the branch chips fell into. Darken the chip
+   background only (the token itself keeps its signalling colour), and do it by
+   mixing so a theme that re-tints --clg-tag stays readable for free. */
+.cl-git .cl-git-chip.is-tag { background: color-mix(in srgb, var(--clg-tag) 65%, #000); }
 .cl-git .cl-git-chip.is-head {
   position: absolute;
   transform: translate(-50%, -100%);
