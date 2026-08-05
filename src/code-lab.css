@@ -1489,3 +1489,63 @@
   padding: 3px 8px;
   white-space: nowrap;
 }
+
+/* --- git file panel ----------------------------------------------------- */
+/* One file, read in one zone. The dots mark a zone whose copy differs from the
+   one behind it, which is the staging area's whole argument. */
+.cl-git .cl-git-fp { margin-top: .6rem; }
+.cl-git .cl-git-fp[hidden] { display: none; }
+
+.cl-git .cl-git-fp-tabs { display: flex; flex-wrap: wrap; gap: .25rem; margin-bottom: .35rem; }
+.cl-git .cl-git-fp-tab {
+  font: 12px/1.5 var(--cl-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  padding: .12rem .5rem; cursor: pointer;
+  border: 1px solid var(--clg-line);
+  border-radius: 6px; background: transparent; color: inherit;
+}
+.cl-git .cl-git-fp-tab[aria-selected="true"] {
+  background: color-mix(in srgb, var(--clg-lane-0) 14%, transparent);
+  border-color: var(--clg-lane-0);
+}
+
+.cl-git .cl-git-fp-box {
+  border: 1px solid var(--clg-line);
+  border-radius: 8px; overflow: hidden;
+}
+.cl-git .cl-git-fp-hd {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  padding: .3rem .55rem; font-size: 11px;
+  border-bottom: 1px solid var(--clg-line);
+  background: var(--clg-bg);
+}
+.cl-git .cl-git-fp-seg { display: inline-flex; flex-wrap: wrap; gap: .15rem; }
+.cl-git .cl-git-fp-zone {
+  font: inherit; display: inline-flex; align-items: center; gap: .3rem;
+  padding: .12rem .5rem; cursor: pointer; color: inherit;
+  border: 1px solid transparent; border-radius: 99px; background: transparent;
+}
+.cl-git .cl-git-fp-zone[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--clg-lane-0) 14%, transparent);
+  border-color: var(--clg-lane-0);
+}
+.cl-git .cl-git-fp-zone[disabled] { opacity: .45; cursor: default; }
+.cl-git .cl-git-fp-dot {
+  width: .42em; height: .42em; border-radius: 50%;
+  background: var(--clg-lane-0); display: inline-block;
+}
+
+.cl-git .cl-git-fp-body {
+  margin: 0; padding: .45rem .55rem; white-space: pre-wrap; word-break: break-word;
+  font: 12px/1.65 var(--cl-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+.cl-git .cl-git-fp-body.is-empty { opacity: .6; font-style: italic; }
+.cl-git .cl-git-fp-ln { display: inline-block; width: 1.6em; opacity: .5; user-select: none; }
+.cl-git .cl-git-fp-line { display: block; }
+.cl-git .cl-git-fp-mark { display: inline-block; width: 1.1em; user-select: none; opacity: .7; }
+.cl-git .cl-git-fp-line.is-add { background: color-mix(in srgb, var(--clg-staged) 18%, transparent); }
+.cl-git .cl-git-fp-line.is-del { background: color-mix(in srgb, var(--clg-danger) 14%, transparent); }
+
+.cl-git .cl-git-fp-ft {
+  padding: .25rem .55rem; font-size: 11px; opacity: .7;
+  border-top: 1px solid var(--clg-line);
+}

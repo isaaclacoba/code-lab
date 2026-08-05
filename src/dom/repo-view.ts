@@ -11,7 +11,7 @@
 
 import type { Panel, SyncCtx } from "./panel.js";
 import { GitGraph } from "./git-graph-view.js";
-import { resolveRepo } from "../core/repo-scene.js";
+import { resolveRepo, type SceneFile } from "../core/repo-scene.js";
 import { init, addFiles, type RepoState } from "../core/git-model.js";
 import { run as runGit } from "../core/git-cli.js";
 import { escapeHtml } from "../core/narration.js";
@@ -43,7 +43,7 @@ export class RepoView implements Panel {
   /** Replay a step's commands into the repository it describes. A command that
    *  errors is an authoring bug, not a learner mistake: it is reported and the
    *  replay continues, so the graph shows the shortfall instead of vanishing. */
-  private build(files: string[], commands: string[]): RepoState {
+  private build(files: SceneFile[], commands: string[]): RepoState {
     let state = files.length ? addFiles(init(), files).state : init();
     for (const line of commands) {
       let res;

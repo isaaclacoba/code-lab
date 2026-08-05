@@ -89,6 +89,8 @@ function headCommit(state: RepoState): Hash | null {
   return state.refs.get(state.head.name) ?? null;
 }
 
+import { GitFilePanel } from "./git-file-panel.js";
+
 export class GitGraph {
   private root!: HTMLElement;
   private graphWrap!: HTMLElement;
@@ -96,6 +98,7 @@ export class GitGraph {
   private chipLayer!: HTMLElement;
   private headEl!: HTMLElement;
   private zoneBodies!: Record<Zone, HTMLElement>;
+  private filePanel!: GitFilePanel;
 
   private state: RepoState | null = null;
   private readonly handlers: InspectHandler[] = [];
@@ -133,7 +136,8 @@ export class GitGraph {
     this.headEl.hidden = true;
 
     this.graphWrap.append(this.svg, this.chipLayer, this.headEl);
-    this.root.append(this.graphWrap, this.buildWorkArea());
+    this.filePanel = new GitFilePanel();
+    this.root.append(this.graphWrap, this.buildWorkArea(), this.filePanel.el);
 
     this.root.addEventListener("click", this.onClick);
     host.appendChild(this.root);
@@ -223,6 +227,7 @@ export class GitGraph {
     this.placeHead(g.chips.find((c) => c.kind === "head"), posOf, animate);
 
     this.renderZones(state, animate);
+    this.filePanel.sync(state);
 
     this.prevNodeIds = newNodeIds;
     this.prevEdgeKeys = newEdgeKeys;

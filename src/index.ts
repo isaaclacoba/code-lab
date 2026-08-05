@@ -38,6 +38,9 @@ export type { OpResult, Effect, WorktreeEntry, WorktreeStatus } from "./core/git
 export { merge3 as gitMerge3, splitLines as gitSplitLines, joinLines as gitJoinLines } from "./core/text-merge.js";
 export type { Merge3Result, MergeLabels } from "./core/text-merge.js";
 export { formatFileDiff as gitFormatFileDiff, diffLines as gitDiffLines } from "./core/text-diff.js";
+// The file panel under the git board.
+export { resolveFilePanel as gitResolveFilePanel, panelFiles as gitPanelFiles } from "./core/file-panel.js";
+export type { FilePanel, PanelZone, ZoneCopy } from "./core/file-panel.js";
 export { run as gitRun } from "./core/git-cli.js";
 // git as a command set the terminal Shell can register. The shell owns tokenizing,
 // help and unknown-command handling; this is only the git subcommands.
@@ -161,7 +164,7 @@ export type {
   PlanState,
 } from "./core/planboard-model.js";
 export { resolvePlan, planProgress } from "./core/planboard-model.js";
-export type { RepoScene } from "./core/repo-scene.js";
+export type { RepoScene, SceneFile } from "./core/repo-scene.js";
 export { resolveRepo } from "./core/repo-scene.js";
 
 export type { CodeMark } from "./core/code-marks.js";

@@ -18,10 +18,15 @@
 // The replay is real - the same git the practical lessons run - so the theory
 // picture and the board the learner types into cannot drift apart.
 
+/** A file the folder starts with. A bare string is a file with no contents -
+ *  fine for a board that only cares about which files moved where. Give it a
+ *  `text` when the lesson is about what is INSIDE the file. */
+export type SceneFile = string | { path: string; text?: string };
+
 /** One step of a git explainer. */
 export interface RepoScene {
   /** Files the folder holds before anything runs, seeded as untracked. */
-  files?: string[];
+  files?: SceneFile[];
   /** Real git commands, replayed in order to build this step's picture. */
   commands: string[];
   /** A short caption under the board, e.g. "main has not moved". */
@@ -35,7 +40,7 @@ export interface RepoScene {
 
 /** What the view actually renders: the same fields, with the optional ones filled. */
 export interface ResolvedRepoScene {
-  files: string[];
+  files: SceneFile[];
   commands: string[];
   note?: string;
   /** The trailing commands this step ran, already sliced out of `commands`. */
