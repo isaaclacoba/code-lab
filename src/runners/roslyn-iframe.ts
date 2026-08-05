@@ -31,6 +31,16 @@ export interface IframeRunnerConfig {
   autoWarm?: boolean;
   /** Complete program compiled during warm-up to JIT the backend. */
   warmProgram?: string;
+  /** Called as the host boots, so a UI can show real progress instead of a
+   *  fixed "preparing" label. `phase` is "download" while the runtime is being
+   *  fetched and "start" once it is in and starting up. */
+  onProgress?: (progress: BootProgress) => void;
+}
+
+export interface BootProgress {
+  phase: "download" | "start" | "warm";
+  /** Percent of the runtime downloaded, 0-100. Stays at 100 after "download". */
+  percent: number;
 }
 
 const DEFAULT_WARM_PROGRAM =
@@ -59,6 +69,8 @@ export class IframeRunner implements CodeRunner {
   private runTimeout: number;
   private warmProgram: string;
 
+  private onProgress?: (progress: BootProgress) => void;
+
   private iframe: HTMLIFrameElement | null = null;
   private readyPromise: Promise<void> | null = null;
   private warmPromise: Promise<void> | null = null;
@@ -71,6 +83,7 @@ export class IframeRunner implements CodeRunner {
     this.readyTimeout = config.readyTimeout ?? 120000;
     this.runTimeout = config.runTimeout ?? 60000;
     this.warmProgram = config.warmProgram ?? DEFAULT_WARM_PROGRAM;
+    this.onProgress = config.onProgress;
     if (config.autoWarm ?? true) {
       // Best effort: kick off the cold start now so it overlaps with the user
       // reading the page. Consumers can await warm() to drive UI state.
@@ -105,17 +118,44 @@ export class IframeRunner implements CodeRunner {
 
     this.readyPromise = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
+        window.removeEventListener("message", boot);
         reject(new Error("The code runner took too long to load."));
       }, this.readyTimeout);
 
-      const ready = (event: MessageEvent) => {
+      // One listener for all three boot outcomes. A failed boot used to say
+      // nothing, so the caller waited out the whole readyTimeout - two minutes
+      // of "preparing" for a fault the host had already detected.
+      const boot = (event: MessageEvent) => {
         if (event.origin !== window.location.origin) return;
-        if ((event.data || {}).type !== "coderunner:ready") return;
-        window.removeEventListener("message", ready);
+        const data = (event.data || {}) as {
+          type?: string;
+          phase?: BootProgress["phase"];
+          percent?: number;
+          message?: string;
+        };
+
+        if (data.type === "coderunner:progress") {
+          this.onProgress?.({
+            phase: data.phase === "start" ? "start" : "download",
+            percent: typeof data.percent === "number" ? data.percent : 0,
+          });
+          return;
+        }
+
+
+        if (data.type === "coderunner:failed") {
+          window.removeEventListener("message", boot);
+          clearTimeout(timer);
+          reject(new Error(data.message || "The code runner failed to load."));
+          return;
+        }
+
+        if (data.type !== "coderunner:ready") return;
+        window.removeEventListener("message", boot);
         clearTimeout(timer);
         resolve();
       };
-      window.addEventListener("message", ready);
+      window.addEventListener("message", boot);
     });
 
     return this.readyPromise;
@@ -131,6 +171,11 @@ export class IframeRunner implements CodeRunner {
     if (this.warmPromise) return this.warmPromise;
     this.warmPromise = (async () => {
       await this.ensureFrame();
+      // The runtime is up but the compiler has not compiled anything yet, and
+      // that first throwaway compile is a slow, silent stretch of its own. The
+      // host cannot report it - it is finished booting - so the phase is named
+      // here, where it is actually known.
+      this.onProgress?.({ phase: "warm", percent: 100 });
       await this.run(this.warmProgram);
     })();
     return this.warmPromise;

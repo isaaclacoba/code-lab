@@ -12,7 +12,7 @@ export type { CSharpSymbols, TypeSymbol, MemberSymbol, VarSymbol, TypeKind, Memb
 export type { LoadMonacoConfig } from "./editors/load-monaco.js";
 
 export { IframeRunner, RoslynIframeRunner } from "./runners/roslyn-iframe.js";
-export type { IframeRunnerConfig, RoslynIframeRunnerConfig, TraceOutcome } from "./runners/roslyn-iframe.js";
+export type { BootProgress, IframeRunnerConfig, RoslynIframeRunnerConfig, TraceOutcome } from "./runners/roslyn-iframe.js";
 
 export { MemoryViz } from "./dom/memory-viz.js";
 export { VizLab } from "./dom/viz-lab.js";

@@ -259,11 +259,103 @@
                     if (target) target.postMessage({ type: "coderunner:result", id: data.id, result: result }, event.origin);
                 });
 
+                // Tells the progress reporter above to stand down before the
+                // parent hears about it, so no stray progress can land after
+                // ready and reopen a resolved state.
+                document.dispatchEvent(new Event("coderunner:ready"));
                 if (window.parent && window.parent !== window) {
                     window.parent.postMessage({ type: "coderunner:ready" }, window.location.origin);
                 }
             }
         };
+    </script>
+
+    <script>
+        // Boot progress, relayed to the embedding page.
+        //
+        // The compiler is a ~30MB WebAssembly runtime. That is anywhere from a
+        // few seconds to a minute depending on the connection, and from outside
+        // the iframe it is completely opaque - the parent only ever learned the
+        // runtime was ready, so its button could say nothing more useful than
+        // "preparing". Blazor already tracks the download for its own spinner
+        // in --blazor-load-percentage; we forward it, plus the phase, so the
+        // parent can say what is actually happening.
+        //
+        // Failure matters as much as progress. When boot dies - a stale cache
+        // serving assemblies that no longer match blazor.boot.json is the usual
+        // way - nothing was ever posted, so the parent sat on its 2 minute
+        // timeout showing "preparing" for a fault it already knew about. Report
+        // it and let the parent give up immediately.
+        (function () {
+            var parentWindow = window.parent;
+            if (!parentWindow || parentWindow === window) return;
+
+            var origin = window.location.origin;
+            var settled = false;
+
+            function post(message) {
+                if (settled) return;
+                try {
+                    parentWindow.postMessage(message, origin);
+                } catch (e) {
+                    // Not embedded, or a cross-origin parent. Nothing to do.
+                }
+            }
+
+            function readPercentage() {
+                var raw = getComputedStyle(document.documentElement)
+                    .getPropertyValue("--blazor-load-percentage");
+                var value = parseFloat(String(raw).replace("%", ""));
+                return isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+            }
+
+            var lastPercent = -1;
+            var phase = "download";
+            var poll = setInterval(function () {
+                if (settled) return clearInterval(poll);
+                var percent = readPercentage();
+                // Blazor stops updating the property once every file is in, but
+                // the runtime still has to start and JIT - the slowest part on a
+                // fast connection. Move to a second phase rather than sitting at
+                // 100% looking stuck.
+                if (percent >= 100 && phase === "download") phase = "start";
+                if (percent !== lastPercent || phase === "start") {
+                    lastPercent = percent;
+                    post({ type: "coderunner:progress", phase: phase, percent: percent });
+                }
+            }, 150);
+
+            window.addEventListener("message", function (event) {
+                // Our own ready signal, seen on the way out: stop reporting.
+                if (event.data && event.data.type === "coderunner:ready") settled = true;
+            });
+            document.addEventListener("coderunner:ready", function () {
+                settled = true;
+                clearInterval(poll);
+            });
+
+            function fail(message) {
+                if (settled) return;
+                settled = true;
+                clearInterval(poll);
+                try {
+                    parentWindow.postMessage(
+                        { type: "coderunner:failed", message: String(message || "") },
+                        origin,
+                    );
+                } catch (e) {
+                    // As above.
+                }
+            }
+
+            window.addEventListener("error", function (event) {
+                fail(event.message || "The compiler failed to start.");
+            });
+            window.addEventListener("unhandledrejection", function (event) {
+                var reason = event.reason;
+                fail((reason && reason.message) || reason || "The compiler failed to start.");
+            });
+        })();
     </script>
 
     <!-- Blazor bootstrap loads LAST, after window.codeLabHost and
