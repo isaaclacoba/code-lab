@@ -45,6 +45,8 @@ export { run as gitRun } from "./core/git-cli.js";
 // git as a command set the terminal Shell can register. The shell owns tokenizing,
 // help and unknown-command handling; this is only the git subcommands.
 export { createGitCommand, gitSubcommands } from "./terminal/commands/git.js";
+// `echo ... > file` - the only way to change what is INSIDE a file.
+export { echoCommand as createEchoCommand } from "./terminal/commands/echo.js";
 export type { RunResult as GitRunResult } from "./core/git-cli.js";
 // The line console the git track types into (dependency-free; xterm.js is deferred).
 // The terminal module: a console that RUNS commands. It knows nothing about git -
