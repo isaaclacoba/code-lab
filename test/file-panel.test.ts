@@ -95,3 +95,19 @@ test("one file with content is enough to earn the panel", () => {
   s = commit(stage(s, ["real.txt"]).state, "has content").state;
   assert.notEqual(resolveFilePanel(s, null, null).path, null);
 });
+
+test("a commit cloned without contents does not crash the panel", () => {
+  // git-progress clones commits as {id, parents, message, paths} to draw the
+  // ghost/union graph, and hands that state to the board. Reading `blobs.keys()`
+  // on one of those threw, and the controller swallowed it - so every
+  // interactive lesson lost its panel with no visible error.
+  let s = addFiles(init(), [{ path: "a.txt", text: "real" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "one").state;
+  const id = [...s.commits.keys()][0];
+  const shapeOnly = {
+    ...s,
+    commits: new Map([[id, { id, parents: [], message: "one", paths: ["a.txt"] }]]),
+  };
+  assert.doesNotThrow(() => resolveFilePanel(shapeOnly as never, null, null));
+  assert.deepEqual(panelFiles(shapeOnly as never), [], "no contents, nothing to list");
+});

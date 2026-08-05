@@ -55,7 +55,10 @@ export function panelFiles(state: RepoState): string[] {
   const head = headCommit(state);
   if (head !== null) {
     const c = state.commits.get(head);
-    if (c) for (const p of c.blobs.keys()) all.add(p);
+    // A commit may arrive without contents: `git-progress` clones commits as
+    // {id, parents, message, paths} to build the ghost/union graph, and that
+    // clone is what the board is handed. No contents means nothing to read.
+    if (c && c.blobs) for (const p of c.blobs.keys()) all.add(p);
   }
   return [...all].sort();
 }

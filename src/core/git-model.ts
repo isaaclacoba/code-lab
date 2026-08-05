@@ -222,14 +222,16 @@ function mergeCommitPaths(s: RepoState, h: Hash, o: Hash): string[] {
 export function treeAt(s: RepoState, h: Hash | null): Map<string, string> {
   if (h === null) return new Map();
   const c = s.commits.get(h);
-  return c ? new Map(c.blobs) : new Map();
+  return c && c.blobs ? new Map(c.blobs) : new Map();
 }
 
 /** What one file held at a commit, or null if that commit did not have it. */
 export function fileAt(s: RepoState, h: Hash | null, path: string): string | null {
   if (h === null) return null;
   const c = s.commits.get(h);
-  if (!c) return null;
+  // `blobs` can be absent: a commit cloned for the ghost graph carries only its
+  // shape. A commit with no contents recorded simply has no text to give.
+  if (!c || !c.blobs) return null;
   return c.blobs.has(path) ? c.blobs.get(path)! : null;
 }
 
