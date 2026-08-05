@@ -540,9 +540,14 @@ export function merge(state: RepoState, otherRev: string): OpResult {
 
   if (conflicted.length > 0) {
     s.merge = { mergeHead: o, conflicted };
-    // The marked-up file is what the learner opens and edits. Git writes the
-    // markers into the working tree; so does this.
-    for (const [p, text] of markedText) s.worktree.set(p, { status: "modified", text });
+    // A stopped merge leaves the file IN THE WORKING TREE for you to settle -
+    // that is where git puts it, and it is what the board has to show. When
+    // there is text, it is the marked-up version the learner opens and edits;
+    // when a lesson recorded none, the file still has to be there to be settled.
+    for (const p of conflicted) {
+      const text = markedText.get(p) ?? fileAt(s, h, p) ?? s.worktree.get(p)?.text ?? "";
+      s.worktree.set(p, { status: "modified", text });
+    }
     return { state: s, effect: { kind: "conflict", paths: conflicted } };
   }
 
@@ -567,6 +572,14 @@ export function merge(state: RepoState, otherRev: string): OpResult {
 export function mergeAbort(state: RepoState): OpResult {
   const s = cloneState(state);
   if (!s.merge) throw new GitError("no merge in progress");
+  // "Puts everything back to how it was before you started" - which means the
+  // marked-up files the merge dropped into the working tree go too. Leaving
+  // them behind would make abort a half-undo, and the working tree would never
+  // match the state the learner started the merge from.
+  const head = headCommit(s);
+  for (const p of s.merge.conflicted) {
+    if (fileAt(s, head, p) !== null) s.worktree.delete(p);
+  }
   s.merge = undefined;
   return { state: s, effect: { kind: "none" } };
 }

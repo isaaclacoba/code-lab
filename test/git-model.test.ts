@@ -689,3 +689,38 @@ test("two branches editing the SAME line conflict, and the file gets markers", (
 function headOf(s: RepoState): string {
   return head(s)!;
 }
+
+test("a stopped merge leaves the conflicted file in the working tree", () => {
+  // Git puts the file you have to settle in front of you. The board draws the
+  // three zones, so a conflict the working tree does not show is a conflict the
+  // learner cannot see.
+  let s = addFiles(init(), [{ path: "a.txt", text: "base" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "base").state;
+  s = branch(s, "feature").state;
+  s = put(s, "a.txt", "ours", "ours");
+  s = checkout(s, "feature").state;
+  s = put(s, "a.txt", "theirs", "theirs");
+  s = checkout(s, "main").state;
+
+  const r = merge(s, "feature");
+  assert.equal(r.effect.kind, "conflict");
+  assert.equal(r.state.worktree.has("a.txt"), true, "the file is there to be settled");
+  assert.equal(r.state.worktree.get("a.txt")!.status, "modified");
+});
+
+test("merge --abort takes the conflicted file back out of the working tree", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "base" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "base").state;
+  s = branch(s, "feature").state;
+  s = put(s, "a.txt", "ours", "ours");
+  s = checkout(s, "feature").state;
+  s = put(s, "a.txt", "theirs", "theirs");
+  s = checkout(s, "main").state;
+
+  const stopped = merge(s, "feature").state;
+  assert.equal(stopped.worktree.has("a.txt"), true, "the merge put it there");
+
+  const back = mergeAbort(stopped).state;
+  assert.equal(back.merge, undefined);
+  assert.equal(back.worktree.has("a.txt"), false, "abort is a full undo, not half of one");
+});
