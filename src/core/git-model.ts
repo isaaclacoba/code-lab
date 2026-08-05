@@ -632,6 +632,76 @@ export function merge(state: RepoState, otherRev: string): OpResult {
   return { state: s, effect: { kind: "merge", id } };
 }
 
+/** git rebase <upstream>. Take the commits that are on this branch and not on
+ *  `upstream`, and make them again on top of it.
+ *
+ *  "Make them AGAIN" is the part worth being precise about, and the part a
+ *  learner has to see: the originals are not moved. Each replayed commit is a
+ *  new commit with a new parent, so it gets a new id, and the old ones stay
+ *  where they were until nothing points at them any more. That is why rebasing
+ *  work someone else has pulled causes trouble, and why the graph afterwards is
+ *  a straight line rather than a join.
+ *
+ *  A replay that would collide is refused rather than guessed at: resolving
+ *  mid-rebase is a whole flow this model does not have, and silently keeping one
+ *  side would teach the wrong thing about what rebase did to the work. */
+export function rebase(state: RepoState, upstreamRev: string): OpResult {
+  const s = cloneState(state);
+  const h = headCommit(s);
+  if (h === null) throw new GitError("cannot rebase: HEAD is unborn");
+  const o = revParse(s, upstreamRev);
+
+  const hAnc = ancestors(s, h);
+  if (hAnc.has(o)) return { state: s, effect: { kind: "none" } };
+
+  const oAnc = ancestors(s, o);
+  if (oAnc.has(h)) {
+    moveHead(s, o, `rebase: fast-forward to ${upstreamRev}`);
+    return { state: s, effect: { kind: "ff", from: h, to: o } };
+  }
+
+  const base = mergeBases(s, h, o)[0] ?? null;
+  // Creation order, so a commit is replayed after the one it was built on.
+  const replay = [...s.commits.keys()].filter((id) => hAnc.has(id) && !oAnc.has(id));
+
+  let tip = o;
+  for (const id of replay) {
+    const c = s.commits.get(id)!;
+    for (const path of c.paths) {
+      const upstreamText = fileAt(s, o, path);
+      const baseText = fileAt(s, base, path);
+      const mineText = c.blobs.get(path) ?? null;
+      const upstreamMoved = upstreamText !== baseText;
+      if (upstreamMoved && upstreamText !== mineText) {
+        throw new GitError(
+          `CONFLICT (content): could not apply ${c.id}... ${c.message}\n` +
+            `Both this commit and ${upstreamRev} changed ${path}.\n` +
+            "Resolving a rebase by hand is not part of this course yet - use `git merge` instead.",
+        );
+      }
+    }
+    const blobs = treeAt(s, tip);
+    for (const path of c.paths) {
+      const text = c.blobs.get(path);
+      if (text === undefined) blobs.delete(path);
+      else blobs.set(path, text);
+    }
+    const newId = makeHash([tip], c.message, s.seq);
+    s.seq += 1;
+    s.commits.set(newId, {
+      id: newId,
+      parents: [tip],
+      message: c.message,
+      paths: c.paths.slice(),
+      blobs,
+    });
+    tip = newId;
+  }
+
+  moveHead(s, tip, `rebase: ${upstreamRev}`);
+  return { state: s, effect: { kind: "commit", id: tip } };
+}
+
 /** git merge --abort. Drop the transient merge state (nothing was committed). */
 export function mergeAbort(state: RepoState): OpResult {
   const s = cloneState(state);

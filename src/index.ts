@@ -29,6 +29,7 @@ export {
   init as gitInit, addFiles as gitAddFiles, stage as gitStage, commit as gitCommit, branch as gitBranch,
   tag as gitTag, checkout as gitCheckout, merge as gitMerge, mergeAbort as gitMergeAbort,
   resolvePaths as gitResolvePaths, reset as gitReset, revParse as gitRevParse,
+  rebase as gitRebase,
   revList as gitRevList, GitError,
   edit as gitEdit, fileAt as gitFileAt, treeAt as gitTreeAt,
 } from "./core/git-model.js";

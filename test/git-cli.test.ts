@@ -403,9 +403,9 @@ test("an unknown command sets error and leaves state unchanged", () => {
   assert.equal(r.effect.kind, "none");
 });
 
-test("a deferred command (rebase) is treated as unknown", () => {
+test("a deferred command (cherry-pick) is treated as unknown", () => {
   const s = repoWithOneCommit();
-  const r = run("git rebase main", s);
+  const r = run("git cherry-pick abc1234", s);
   assert.ok(r.error);
   assert.equal(r.state, s);
 });

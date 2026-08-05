@@ -31,7 +31,6 @@ function gitShell() {
 
 /** Every command word this git must never claim to support. */
 const DEFERRED = [
-  "rebase",
   "cherry-pick",
   "stash",
   "remote",
@@ -192,7 +191,7 @@ test("a near miss suggests the closest supported subcommand", () => {
 });
 
 test("a deferred command is unknown and gets no misleading suggestion", () => {
-  const r = run("git rebase main", init());
+  const r = run("git cherry-pick abc1234", init());
   assert.ok(r.error);
   assert.match(r.output, /is not a git command/);
   assert.doesNotMatch(r.output, /The most similar command is/);

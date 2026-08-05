@@ -18,6 +18,7 @@ import {
   edit,
   fileAt,
   treeAt,
+  rebase,
   type RepoState,
 } from "../src/core/git-model.ts";
 
@@ -847,4 +848,61 @@ test("asking the reflog for a move that never happened is an error", () => {
   let s = addFiles(init(), [{ path: "a.txt", text: "one" }]).state;
   s = commit(stage(s, ["a.txt"]).state, "only one").state;
   assert.throws(() => revParse(s, "HEAD@{9}"), /only has 1 entries/);
+});
+
+// --- rebase: the commits are made AGAIN, not moved ------------------------
+
+test("rebase replays this branch's commits on top of the other one", () => {
+  let s = addFiles(init(), [{ path: "base.txt", text: "shared" }]).state;
+  s = commit(stage(s, ["base.txt"]).state, "base").state;
+  s = branch(s, "feature").state;
+  s = put(s, "main-only.txt", "from main", "main moves on");
+  s = checkout(s, "feature").state;
+  s = put(s, "mine.txt", "my work", "my work");
+
+  const before = head(s)!;
+  const r = rebase(s, "main");
+  const after = head(r.state)!;
+
+  assert.notEqual(after, before, "the replayed commit is a NEW commit with a new id");
+  assert.equal(r.state.commits.get(after)!.message, "my work");
+  assert.equal(
+    r.state.commits.get(r.state.commits.get(after)!.parents[0])!.message,
+    "main moves on",
+    "and it now sits on top of main's work",
+  );
+  assert.equal(fileAt(r.state, after, "main-only.txt"), "from main", "main's file came along");
+  assert.equal(fileAt(r.state, after, "mine.txt"), "my work", "and mine survived");
+});
+
+test("rebase leaves the original commits where they were", () => {
+  let s = addFiles(init(), [{ path: "base.txt", text: "shared" }]).state;
+  s = commit(stage(s, ["base.txt"]).state, "base").state;
+  s = branch(s, "feature").state;
+  s = put(s, "main-only.txt", "from main", "main moves on");
+  s = checkout(s, "feature").state;
+  s = put(s, "mine.txt", "my work", "my work");
+  const original = head(s)!;
+
+  const after = rebase(s, "main").state;
+  assert.equal(after.commits.has(original), true, "the old commit still exists - nothing was moved");
+});
+
+test("rebase refuses rather than guessing when the same file moved on both sides", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "shared" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "base").state;
+  s = branch(s, "feature").state;
+  s = put(s, "a.txt", "main version", "main edit");
+  s = checkout(s, "feature").state;
+  s = put(s, "a.txt", "feature version", "feature edit");
+
+  assert.throws(() => rebase(s, "main"), /CONFLICT/);
+});
+
+test("rebasing onto something already behind you does nothing", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "one" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "base").state;
+  s = branch(s, "old").state;
+  s = put(s, "b.txt", "two", "ahead");
+  assert.equal(rebase(s, "old").effect.kind, "none");
 });
