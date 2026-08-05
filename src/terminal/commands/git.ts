@@ -63,9 +63,13 @@ interface SubcommandDoc {
  * Every subcommand this model really implements, in teaching order (the order a
  * learner meets them), which is also the order `git help` prints.
  *
- * Nothing else may be listed here. `rebase`, `cherry-pick`, `stash`, `reflog`
- * and everything remote are deliberately not in the model, so advertising them
+ * Nothing else may be listed here. `rebase`, `cherry-pick`, `stash` and
+ * everything remote are deliberately not in the model, so advertising them
  * would be a promise the learner breaks on their next keystroke.
+ *
+ * `reflog` used to be on that list while the reset lesson's prose already told
+ * the learner to use it. It is implemented now, which is the other way to end
+ * that kind of mismatch.
  */
 const SUBCOMMANDS: readonly SubcommandDoc[] = [
   {
@@ -77,6 +81,11 @@ const SUBCOMMANDS: readonly SubcommandDoc[] = [
     name: "status",
     summary: "Show what is staged, changed, and untracked.",
     usage: ["status"],
+  },
+  {
+    name: "reflog",
+    summary: "List where HEAD has been, newest first.",
+    usage: ["reflog"],
   },
   {
     name: "diff",
@@ -339,6 +348,21 @@ function diffText(s: RepoState, a: DiffArgs): string {
   return chunks.join("\n");
 }
 
+/** `git reflog`. Newest first, so `HEAD@{0}` is where you are standing.
+ *
+ *  This is the command that makes "undone" different from "gone": a commit no
+ *  branch can reach any more is still listed here, with its hash, so it can be
+ *  reached again. */
+function reflogText(s: RepoState): string {
+  const entries = s.reflog || [];
+  if (entries.length === 0) return "fatal: your current branch does not have any commits yet";
+  return entries
+    .slice()
+    .reverse()
+    .map((e, i) => `${e.commit} HEAD@{${i}}: ${e.label}`)
+    .join("\n");
+}
+
 /** `git status` - a plausible subset of real git's porcelain. */
 function statusText(s: RepoState): string {
   const blocks: string[][] = [];
@@ -510,6 +534,10 @@ export function runGit(argv: string[], state: RepoState): GitRunResult {
 
       case "status": {
         return ok(state, statusText(state), { kind: "none" });
+      }
+
+      case "reflog": {
+        return ok(state, reflogText(state), { kind: "none" });
       }
 
       case "diff": {

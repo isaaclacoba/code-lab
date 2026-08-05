@@ -34,7 +34,6 @@ const DEFERRED = [
   "rebase",
   "cherry-pick",
   "stash",
-  "reflog",
   "remote",
   "push",
   "pull",
@@ -334,4 +333,15 @@ test("a word that is neither a revision nor a file is refused clearly", () => {
   const r = run("git diff nonsense", edited());
   assert.ok(r.error);
   assert.match(r.output, /unknown revision or path/);
+});
+
+test("git reflog reads the way git prints it, newest first", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "one" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "add a").state;
+  const out = run("git reflog", s).output;
+  assert.match(out, /^[0-9a-f]{7} HEAD@\{0\}: commit: add a$/m);
+});
+
+test("git reflog is listed in git help", () => {
+  assert.match(run("git help", init()).output, /reflog\s+List where HEAD has been/);
 });

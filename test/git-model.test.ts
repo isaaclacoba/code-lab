@@ -781,3 +781,70 @@ test("settling a conflict keeps the text the learner actually wrote", () => {
 
   assert.equal(fileAt(done, head(done), "a.txt"), "one\nWHAT THE LEARNER CHOSE\nthree");
 });
+
+// --- the reflog: undone is not the same as gone ---------------------------
+
+test("the reflog remembers every place HEAD has been, and why", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "one" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "add a").state;
+  s = branch(s, "feature").state;
+  s = checkout(s, "feature").state;
+
+  assert.deepEqual(
+    s.reflog.map((e) => e.label),
+    ["commit: add a", "checkout: moving to feature"],
+  );
+});
+
+test("a commit thrown away by reset --hard is still in the reflog", () => {
+  // This is the whole reason the command exists, and the reset lesson already
+  // promises it in prose: undone is not gone.
+  let s = addFiles(init(), [{ path: "a.txt", text: "one" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "keep me").state;
+  s = addFiles(s, [{ path: "b.txt", text: "two" }]).state;
+  s = commit(stage(s, ["b.txt"]).state, "oops").state;
+  const lost = head(s)!;
+
+  s = reset(s, "hard", "HEAD~1").state;
+  assert.notEqual(head(s), lost, "the branch really did move off it");
+  assert.ok(
+    s.reflog.some((e) => e.commit === lost),
+    "but the reflog still names the commit, so it can be reached again",
+  );
+
+  const back = reset(s, "hard", lost).state;
+  assert.equal(back.commits.get(head(back)!)!.message, "oops", "and going back works");
+});
+
+test("a merge names itself in the reflog, both kinds", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "base" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "base").state;
+  s = branch(s, "feature").state;
+  s = checkout(s, "feature").state;
+  s = put(s, "a.txt", "on feature", "feature work");
+  s = checkout(s, "main").state;
+  s = merge(s, "feature").state;
+
+  assert.match(s.reflog[s.reflog.length - 1].label, /merge feature: Fast-forward/);
+});
+
+test("HEAD@{n} names a commit, so the form everyone types actually works", () => {
+  // While it did not parse, `git reset --hard HEAD@{1}` fell through to the
+  // pathspec branch and reported success having done nothing at all.
+  let s = addFiles(init(), [{ path: "a.txt", text: "one" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "keep me").state;
+  s = addFiles(s, [{ path: "b.txt", text: "two" }]).state;
+  s = commit(stage(s, ["b.txt"]).state, "oops").state;
+  const lost = head(s)!;
+  s = reset(s, "hard", "HEAD~1").state;
+
+  assert.equal(revParse(s, "HEAD@{1}"), lost, "one move ago is the commit we left");
+  const back = reset(s, "hard", "HEAD@{1}").state;
+  assert.equal(back.commits.get(head(back)!)!.message, "oops");
+});
+
+test("asking the reflog for a move that never happened is an error", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "one" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "only one").state;
+  assert.throws(() => revParse(s, "HEAD@{9}"), /only has 1 entries/);
+});

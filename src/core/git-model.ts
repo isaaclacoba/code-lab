@@ -67,8 +67,20 @@ export interface RepoState {
   worktree: Map<string, WorktreeEntry>;
   /** Set only mid-merge-conflict: the other side plus the paths still in conflict. */
   merge?: { mergeHead: Hash; conflicted: string[] };
+  /** Where HEAD has BEEN, oldest first. Git keeps this so that work you can no
+   *  longer reach by any branch name is still findable for a while - which is
+   *  the difference between "undone" and "gone", and the only honest answer to
+   *  "I just reset --hard, is my commit lost?". */
+  reflog: ReflogEntry[];
   /** Monotonic commit counter, folded into every hash preimage. */
   seq: number;
+}
+
+/** One line of the reflog: where HEAD landed, and what put it there. */
+export interface ReflogEntry {
+  commit: Hash;
+  /** Written the way git writes it: "commit: add cat", "reset: moving to HEAD~1". */
+  label: string;
 }
 
 /** What an op did, for the animation layer. */
@@ -132,6 +144,7 @@ function cloneState(s: RepoState): RepoState {
     merge: s.merge
       ? { mergeHead: s.merge.mergeHead, conflicted: [...s.merge.conflicted] }
       : undefined,
+    reflog: (s.reflog || []).map((e) => ({ commit: e.commit, label: e.label })),
     seq: s.seq,
   };
 }
@@ -150,7 +163,11 @@ export function headCommit(s: RepoState): Hash | null {
 
 /** Advance HEAD's branch (or move detached HEAD) to a commit. Mutates the
  *  ALREADY-CLONED state passed in. */
-function moveHead(s: RepoState, to: Hash): void {
+function moveHead(s: RepoState, to: Hash, why?: string): void {
+  if (why) {
+    if (!s.reflog) s.reflog = [];
+    s.reflog.push({ commit: to, label: why });
+  }
   if (s.head.kind === "branch") {
     s.refs.set(s.head.name, to);
   } else {
@@ -268,6 +285,18 @@ function resolveBase(s: RepoState, tok: string): Hash {
     if (h === null) throw new GitError("HEAD is unborn");
     return h;
   }
+  // `HEAD@{2}` - two moves ago, counted in the reflog. This is the form a
+  // learner will have seen in every answer they read, so it has to work: while
+  // it did not parse, `git reset --hard HEAD@{1}` fell through to the pathspec
+  // branch, quietly unstaged nothing, and reported success. A wrong answer that
+  // looks like a right one is worse than an error.
+  const back = /^(?:HEAD|@)@\{(\d+)\}$/.exec(tok);
+  if (back) {
+    const log = s.reflog || [];
+    const i = log.length - 1 - Number(back[1]);
+    if (i < 0) throw new GitError(`fatal: log for 'HEAD' only has ${log.length} entries`);
+    return log[i].commit;
+  }
   if (s.refs.has(tok)) return s.refs.get(tok)!;
   const bref = `refs/heads/${tok}`;
   if (s.refs.has(bref)) return s.refs.get(bref)!;
@@ -293,6 +322,7 @@ export function init(): RepoState {
     head: { kind: "branch", name: "refs/heads/main" },
     index: new Map(),
     worktree: new Map(),
+    reflog: [],
     seq: 0,
   };
 }
@@ -363,7 +393,7 @@ export function amend(state: RepoState, message?: string): OpResult {
   const blobs = new Map(old.blobs);
   for (const [p, text] of s.index) blobs.set(p, text);
   s.commits.set(id, { id, parents, message: msg, paths, blobs });
-  moveHead(s, id);
+  moveHead(s, id, `commit (amend): ${msg}`);
   s.index.clear();
   return { state: s, effect: { kind: "commit", id } };
 }
@@ -410,7 +440,7 @@ export function commit(state: RepoState, message: string): OpResult {
     for (const [p, text] of treeAt(s, other)) if (!blobs.has(p)) blobs.set(p, text);
     for (const [p, text] of s.index) blobs.set(p, text);
     s.commits.set(id, { id, parents, message, paths, blobs });
-    moveHead(s, id);
+    moveHead(s, id, `commit (merge): ${message}`);
     s.merge = undefined;
     s.index.clear();
     return { state: s, effect: { kind: "merge", id } };
@@ -423,7 +453,7 @@ export function commit(state: RepoState, message: string): OpResult {
   s.seq += 1;
   const blobs = treeWithIndex(s, head);
   s.commits.set(id, { id, parents, message, paths, blobs });
-  moveHead(s, id);
+  moveHead(s, id, `commit: ${message}`);
   s.index.clear();
   return { state: s, effect: { kind: "commit", id } };
 }
@@ -473,6 +503,7 @@ export function checkout(
   if (s.refs.has(bref)) {
     moveWorktreeTo(s, s.refs.get(bref)!);
     s.head = { kind: "branch", name: bref };
+    s.reflog.push({ commit: s.refs.get(bref)!, label: `checkout: moving to ${target}` });
     return { state: s, effect: { kind: "checkout", ref: bref } };
   }
   if (target.startsWith("refs/heads/") && s.refs.has(target)) {
@@ -483,6 +514,7 @@ export function checkout(
   const commitId = revParse(s, target);
   moveWorktreeTo(s, commitId);
   s.head = { kind: "detached", commit: commitId };
+  s.reflog.push({ commit: commitId, label: `checkout: moving to ${target}` });
   return { state: s, effect: { kind: "checkout", commit: commitId } };
 }
 
@@ -532,7 +564,7 @@ export function merge(state: RepoState, otherRev: string): OpResult {
   const oAnc = ancestors(s, o);
   if (oAnc.has(h)) {
     // HEAD is an ancestor of other - fast-forward
-    moveHead(s, o);
+    moveHead(s, o, `merge ${otherRev}: Fast-forward`);
     return { state: s, effect: { kind: "ff", from: h, to: o } };
   }
 
@@ -596,7 +628,7 @@ export function merge(state: RepoState, otherRev: string): OpResult {
   // ...and, for a file both sides edited without overlapping, the merged text.
   for (const [p, text] of resolvedText) blobs.set(p, text);
   s.commits.set(id, { id, parents, message, paths, blobs });
-  moveHead(s, id);
+  moveHead(s, id, `merge ${otherRev}: Merge made by the recursive strategy.`);
   return { state: s, effect: { kind: "merge", id } };
 }
 
@@ -646,7 +678,7 @@ export function reset(
   const s = cloneState(state);
   const before = headCommit(s);
   const target = revParse(s, targetRev);
-  moveHead(s, target);
+  moveHead(s, target, `reset: moving to ${targetRev}`);
   // A path that no reachable commit has ever recorded is untracked: unstaging it
   // makes it untracked again, not "modified".
   const tracked = trackedPaths(s, target);
