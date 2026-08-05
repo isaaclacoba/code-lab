@@ -99,9 +99,13 @@ export function resolveFilePanel(
     z.differs = z.present && prev !== null && prev.text !== z.text;
   }
 
-  // Prefer the zone the learner picked; otherwise the first that holds the file.
+  // The learner's own pick always wins. With no pick, land on the zone that has
+  // something to say: the first copy that DIFFERS from the one behind it. A
+  // panel that defaults to the top zone shows a flat file and hides the very
+  // disagreement it exists to point at - the staging-area lesson turns on this.
   const wanted = selected && zones.some((z) => z.zone === selected && z.present) ? selected : null;
-  const sel = wanted ?? (zones.find((z) => z.present)?.zone ?? "tree");
+  const interesting = zones.find((z) => z.present && z.differs)?.zone;
+  const sel = wanted ?? interesting ?? (zones.find((z) => z.present)?.zone ?? "tree");
   const selCopy = zones.find((z) => z.zone === sel)!;
   const prev = behind(zones, sel);
 

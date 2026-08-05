@@ -620,6 +620,17 @@ export function mergeAbort(state: RepoState): OpResult {
 export function resolvePaths(state: RepoState, paths: string[]): OpResult {
   const s = cloneState(state);
   if (!s.merge) throw new GitError("no merge in progress");
+  // `git add` during a merge does BOTH things: it marks the path settled and it
+  // stages the text the learner left in the file. Only doing the first threw
+  // their resolution away - the merge commit kept HEAD's version, so a lesson
+  // could ask someone to edit out the markers and then quietly ignore the edit.
+  for (const p of paths) {
+    const entry = s.worktree.get(p);
+    if (entry) {
+      s.index.set(p, entry.text);
+      s.worktree.delete(p);
+    }
+  }
   const remaining = s.merge.conflicted.filter((p) => !paths.includes(p));
   s.merge = { mergeHead: s.merge.mergeHead, conflicted: remaining };
   return { state: s, effect: { kind: "none" } };

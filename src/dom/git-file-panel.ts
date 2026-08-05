@@ -66,9 +66,11 @@ export class GitFilePanel {
       return;
     }
     this.el.hidden = false;
-    // Keep the resolved choices, so the next sync starts from what is on screen.
+    // Remember the FILE, so a repaint does not jump to another one. Do NOT
+    // remember the zone: leaving it null lets each repaint land on whichever
+    // copy now disagrees. Pinning it here made the panel sticky, so a lesson
+    // that moves work between zones showed the learner a stale, flat file.
     this.path = p.path;
-    this.zone = p.selected;
 
     const chips = p.files
       .map(

@@ -111,3 +111,23 @@ test("a commit cloned without contents does not crash the panel", () => {
   assert.doesNotThrow(() => resolveFilePanel(shapeOnly as never, null, null));
   assert.deepEqual(panelFiles(shapeOnly as never), [], "no contents, nothing to list");
 });
+
+test("with no pick, the panel lands on the copy that disagrees", () => {
+  // Defaulting to the top zone shows a flat file and hides the disagreement the
+  // panel exists to point at.
+  const p = resolveFilePanel(threeWay(), "notes.md", null);
+  assert.equal(p.selected, "tree");
+  assert.notEqual(p.diff, null, "it opens showing a change, not a flat copy");
+});
+
+test("a file that agrees everywhere opens flat, with nothing marked", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "same" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "base").state;
+  const p = resolveFilePanel(s, "a.txt", null);
+  assert.equal(p.diff, null);
+});
+
+test("the learner's own pick still wins over the interesting one", () => {
+  const p = resolveFilePanel(threeWay(), "notes.md", "repo");
+  assert.equal(p.selected, "repo");
+});

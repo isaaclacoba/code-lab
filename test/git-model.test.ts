@@ -760,3 +760,24 @@ test("an untracked file is left alone when you switch", () => {
   const after = checkout(s, "feature").state;
   assert.equal(after.worktree.get("scratch.txt")?.text, "mine", "git does not touch what it is not tracking");
 });
+
+test("settling a conflict keeps the text the learner actually wrote", () => {
+  // `git add` mid-merge used to only mark the path settled, so the merge commit
+  // kept HEAD's version. A lesson could ask someone to edit out the markers and
+  // then silently discard the edit.
+  let s = addFiles(init(), [{ path: "a.txt", text: "one\nBASE\nthree" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "base").state;
+  s = branch(s, "feature").state;
+  s = put(s, "a.txt", "one\nMAIN\nthree", "main");
+  s = checkout(s, "feature").state;
+  s = put(s, "a.txt", "one\nFEATURE\nthree", "feature");
+  s = checkout(s, "main").state;
+
+  s = merge(s, "feature").state;
+  assert.ok(s.merge, "it stopped");
+  s = edit(s, "a.txt", "one\nWHAT THE LEARNER CHOSE\nthree").state;
+  s = resolvePaths(s, ["a.txt"]).state;
+  const done = commit(s, "merge feature").state;
+
+  assert.equal(fileAt(done, head(done), "a.txt"), "one\nWHAT THE LEARNER CHOSE\nthree");
+});
