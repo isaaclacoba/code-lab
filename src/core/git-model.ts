@@ -471,16 +471,48 @@ export function checkout(
   }
   const bref = `refs/heads/${target}`;
   if (s.refs.has(bref)) {
+    moveWorktreeTo(s, s.refs.get(bref)!);
     s.head = { kind: "branch", name: bref };
     return { state: s, effect: { kind: "checkout", ref: bref } };
   }
   if (target.startsWith("refs/heads/") && s.refs.has(target)) {
+    moveWorktreeTo(s, s.refs.get(target)!);
     s.head = { kind: "branch", name: target };
     return { state: s, effect: { kind: "checkout", ref: target } };
   }
   const commitId = revParse(s, target);
+  moveWorktreeTo(s, commitId);
   s.head = { kind: "detached", commit: commitId };
   return { state: s, effect: { kind: "checkout", commit: commitId } };
+}
+
+/** Switching branches REPLACES the files in the folder with that commit's
+ *  versions - that is the whole answer to "if a branch is just a name, what
+ *  happens to my work when I switch?", and a lesson asks exactly that.
+ *
+ *  A tracked file the learner has edited would be overwritten, so git refuses
+ *  rather than destroying it; so does this. Untracked files are nobody's
+ *  business but the learner's and are left alone. */
+function moveWorktreeTo(s: RepoState, to: Hash | null): void {
+  const from = headCommit(s);
+  const target = treeAt(s, to);
+  const blocked: string[] = [];
+  for (const [path, entry] of s.worktree) {
+    if (entry.status === "untracked") continue;
+    if (target.get(path) !== entry.text) blocked.push(path);
+  }
+  if (blocked.length > 0) {
+    throw new GitError(
+      "error: Your local changes to the following files would be overwritten by checkout:\n" +
+        blocked.sort().map((p) => `        ${p}`).join("\n") +
+        "\nPlease commit your changes before you switch branches.",
+    );
+  }
+  // Everything tracked now matches the commit again, so nothing is "modified".
+  for (const [path, entry] of [...s.worktree]) {
+    if (entry.status !== "untracked") s.worktree.delete(path);
+  }
+  void from;
 }
 
 /** git merge <rev>. Up-to-date -> none; fast-forward -> move the pointer;

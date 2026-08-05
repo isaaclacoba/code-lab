@@ -724,3 +724,39 @@ test("merge --abort takes the conflicted file back out of the working tree", () 
   assert.equal(back.merge, undefined);
   assert.equal(back.worktree.has("a.txt"), false, "abort is a full undo, not half of one");
 });
+
+// --- switching branches moves the FILES, not just the label ---------------
+
+test("switching branches replaces what is in the folder", () => {
+  // The question a theory lesson owns: if a branch is only a name, what happens
+  // to my work when I switch? The files change to that commit's versions.
+  let s = addFiles(init(), [{ path: "a.txt", text: "base" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "base").state;
+  s = branch(s, "feature").state;
+  s = put(s, "a.txt", "main version", "main edit");
+
+  assert.equal(fileAt(s, head(s), "a.txt"), "main version");
+  const onFeature = checkout(s, "feature").state;
+  assert.equal(fileAt(onFeature, head(onFeature), "a.txt"), "base", "the folder follows the branch");
+  assert.equal(onFeature.worktree.has("a.txt"), false, "and it is clean, not 'modified'");
+});
+
+test("switching refuses to throw away an edit you have not committed", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "base" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "base").state;
+  s = branch(s, "feature").state;
+  s = put(s, "a.txt", "committed on main", "main edit");
+  s = edit(s, "a.txt", "work in progress").state;
+
+  assert.throws(() => checkout(s, "feature"), /would be overwritten/);
+});
+
+test("an untracked file is left alone when you switch", () => {
+  let s = addFiles(init(), [{ path: "a.txt", text: "base" }]).state;
+  s = commit(stage(s, ["a.txt"]).state, "base").state;
+  s = branch(s, "feature").state;
+  s = addFiles(s, [{ path: "scratch.txt", text: "mine" }]).state;
+
+  const after = checkout(s, "feature").state;
+  assert.equal(after.worktree.get("scratch.txt")?.text, "mine", "git does not touch what it is not tracking");
+});
