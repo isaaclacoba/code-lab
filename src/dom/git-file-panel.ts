@@ -32,6 +32,8 @@ export class GitFilePanel {
   private path: string | null = null;
   private zone: PanelZone | null = null;
   private state: RepoState | null = null;
+  /** null = decide from the repo; true/false = the learner said so. */
+  private open: boolean | null = null;
 
   constructor() {
     this.el = document.createElement("div");
@@ -47,9 +49,13 @@ export class GitFilePanel {
   }
 
   private readonly onClick = (ev: Event): void => {
-    const t = (ev.target as HTMLElement | null)?.closest<HTMLElement>("[data-file],[data-zone]");
+    const t = (ev.target as HTMLElement | null)?.closest<HTMLElement>(
+      "[data-file],[data-zone],[data-toggle]",
+    );
     if (!t || !this.state) return;
-    if (t.dataset.file) {
+    if (t.dataset.toggle) {
+      this.open = t.getAttribute("aria-expanded") !== "true";
+    } else if (t.dataset.file) {
       this.path = t.dataset.file;
       // A different file may not exist in the zone we were reading.
       this.zone = null;
@@ -95,6 +101,13 @@ export class GitFilePanel {
       );
     }).join("");
 
+    // Worth opening only when there is something to compare. A file that
+    // reads the same in every zone teaches nothing by being on screen all the
+    // time, so it collapses to one line and stays one click away. The learner's
+    // own choice always wins once they have made one.
+    const anyDifference = p.zones.some((z) => z.differs);
+    const expanded = this.open === null ? anyDifference : this.open;
+
     const selected = p.zones.find((c) => c.zone === p.selected)!;
     const body = p.diff ? this.diffBody(p) : this.flatBody(selected.text);
     const foot = p.comparedWith
@@ -103,14 +116,28 @@ export class GitFilePanel {
         ? `${ZONE_PHRASE[p.selected]} - no change behind it`
         : "not in this zone";
 
+    const summary = anyDifference
+      ? `${p.files.length > 1 ? escapeHtml(p.path) + " - " : ""}the copies differ`
+      : "the files read the same everywhere";
+    const toggle =
+      `<button type="button" class="cl-git-fp-toggle" data-toggle="1"` +
+      ` aria-expanded="${expanded}">` +
+      `<span class="cl-git-fp-caret" aria-hidden="true"></span>` +
+      `<span>File contents</span>` +
+      `<span class="cl-git-fp-summary">${summary}</span>` +
+      `</button>`;
+
     this.el.innerHTML =
-      `<div class="cl-git-fp-tabs" role="tablist">${chips}</div>` +
-      `<div class="cl-git-fp-box">` +
-      `<div class="cl-git-fp-hd"><strong>${escapeHtml(p.path)}</strong>` +
-      `<span class="cl-git-fp-seg">${zoneButtons}</span></div>` +
-      body +
-      `<div class="cl-git-fp-ft">${escapeHtml(foot)}</div>` +
-      `</div>`;
+      toggle +
+      (expanded
+        ? `<div class="cl-git-fp-tabs" role="tablist">${chips}</div>` +
+          `<div class="cl-git-fp-box">` +
+          `<div class="cl-git-fp-hd"><strong>${escapeHtml(p.path)}</strong>` +
+          `<span class="cl-git-fp-seg">${zoneButtons}</span></div>` +
+          body +
+          `<div class="cl-git-fp-ft">${escapeHtml(foot)}</div>` +
+          `</div>`
+        : "");
   }
 
   private flatBody(text: string): string {

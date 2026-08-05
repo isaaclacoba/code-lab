@@ -1549,3 +1549,24 @@
   padding: .25rem .55rem; font-size: 11px; opacity: .7;
   border-top: 1px solid var(--clg-line);
 }
+
+/* The file panel collapses. A file that reads the same in every zone teaches
+   nothing by sitting open on every board, so it shrinks to one line the learner
+   can open when they want it. */
+.cl-git .cl-git-fp-toggle {
+  display: flex; align-items: center; gap: .4rem; width: 100%;
+  font: inherit; font-size: 11px; text-align: left; cursor: pointer;
+  padding: .25rem .5rem; color: inherit;
+  border: 1px solid var(--clg-line); border-radius: 8px; background: var(--clg-bg);
+}
+.cl-git .cl-git-fp-toggle[aria-expanded="true"] {
+  border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: transparent;
+}
+.cl-git .cl-git-fp-caret {
+  width: 0; height: 0; flex: none;
+  border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  transition: transform .12s ease; opacity: .65;
+}
+.cl-git .cl-git-fp-toggle[aria-expanded="true"] .cl-git-fp-caret { transform: rotate(90deg); }
+.cl-git .cl-git-fp-summary { margin-left: auto; opacity: .6; }
+.cl-git .cl-git-fp-toggle[aria-expanded="true"] + .cl-git-fp-tabs { margin-top: .35rem; }
