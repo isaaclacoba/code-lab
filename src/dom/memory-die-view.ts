@@ -252,7 +252,7 @@ export class MemoryDieView implements Panel {
     el.className = "cl-mv-obj" + (o.dim ? " is-dim" : "");
     el.setAttribute("data-obj", o.id);
     el.innerHTML =
-      `<div class="cl-mv-oname">${o.type} <span style="color:#94a3b8">@${o.at ?? "heap"}</span></div>` +
+      `<div class="cl-mv-oname">${o.type} <span class="cl-mv-oat">@${o.at ?? "heap"}</span></div>` +
       (o.fields ?? [])
         .map((field) => {
           const hot = (o.hotFields ?? []).includes(field[0]);

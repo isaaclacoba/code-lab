@@ -505,7 +505,7 @@
 .cl-mv .cl-mv-vt-row { display: grid; grid-template-columns: minmax(6ch, 32%) 1fr; align-items: center; gap: 12px; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 15px); background: var(--mv-surface, #fff); border: 1px solid var(--mv-cool-line, var(--mv-line)); border-radius: 8px; padding: 8px 12px; }
 .cl-mv .cl-mv-vt-name { color: var(--mv-name-ink, #475569); }
 .cl-mv .cl-mv-vt-val { color: var(--mv-ink); font-weight: 600; word-break: break-word; }
-.cl-mv .cl-mv-vt-row.is-empty .cl-mv-vt-val { color: var(--mv-empty-ink, #b6bcc6); font-weight: 400; font-style: italic; }
+.cl-mv .cl-mv-vt-row.is-empty .cl-mv-vt-val { color: var(--mv-empty-ink, #6d7177); font-weight: 400; font-style: italic; }
 .cl-mv .cl-mv-vt-row.is-changed { border-color: var(--mv-hot-line, #f59e0b); background: var(--mv-hot-bg, #fff7ea); box-shadow: 0 0 0 2px var(--mv-hot-ring, #fde3ad); }
 .cl-mv .cl-mv-vt-row.is-changed .cl-mv-vt-val { color: var(--mv-hot-ink, #b45309); font-weight: 700; }
 .cl-mv .cl-mv-vt-empty { font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-empty-ink, #9aa0a8); font-style: italic; padding: 6px 2px; }
@@ -532,10 +532,10 @@
 .cl-mv .cl-mv-frame.is-accent .cl-mv-fname { color: var(--frame-accent); }
 .cl-mv .cl-mv-fname { font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-stack); font-weight: 600; margin-bottom: 6px; }
 .cl-mv .cl-mv-slot { display: flex; align-items: center; gap: 8px; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 14px); background: var(--mv-surface, #fff); border: 1px solid var(--mv-cool-line, #d7e3ff); border-radius: 6px; padding: 3px 8px; margin-top: 4px; }
-.cl-mv .cl-mv-slot .cl-mv-addr { color: var(--mv-addr-ink, #94a3b8); font-size: calc(var(--mv-fs) * 12px); }
+.cl-mv .cl-mv-slot .cl-mv-addr { color: var(--mv-addr-ink, #687281); font-size: calc(var(--mv-fs) * 12px); }
 .cl-mv .cl-mv-slot .cl-mv-k { color: var(--mv-name-ink, #475569); }
 .cl-mv .cl-mv-slot .cl-mv-v { color: var(--mv-ink); font-weight: 500; }
-.cl-mv .cl-mv-slot.is-empty .cl-mv-v { color: var(--mv-empty-ink, #b6bcc6); font-weight: 400; font-style: italic; }
+.cl-mv .cl-mv-slot.is-empty .cl-mv-v { color: var(--mv-empty-ink, #6d7177); font-weight: 400; font-style: italic; }
 .cl-mv .cl-mv-slot.is-hot { border-color: var(--mv-hot-line, #f59e0b); background: var(--mv-hot-bg, #fff7ea); box-shadow: 0 0 0 2px var(--mv-hot-ring, #fde3ad); animation: cl-mv-flip 0.45s ease; }
 .cl-mv .cl-mv-slot.is-hot .cl-mv-v { color: var(--mv-hot-ink, #b45309); font-weight: 700; }
 @keyframes cl-mv-flip { 0% { transform: scale(1); } 45% { transform: scale(1.08); } 100% { transform: scale(1); } }
@@ -547,6 +547,10 @@
 .cl-mv .cl-mv-obj .cl-mv-field { font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-obj-field-ink, #334155); margin-top: 4px; }
 .cl-mv .cl-mv-obj .cl-mv-field.is-hot { background: var(--mv-hot-bg, #fff7ea); border-radius: 4px; padding: 1px 5px; box-shadow: inset 0 0 0 1px var(--mv-hot-inset, #f0c14b); color: var(--mv-hot-ink, #b45309); font-weight: 700; animation: cl-mv-flip 0.45s ease; }
 .cl-mv .cl-mv-obj.glow { box-shadow: 0 0 0 3px rgba(31,111,95,0.28); }
+/* The heap address beside an object name. It was an inline color:#94a3b8, which
+   is 2.40:1 on the pale stage - under the AA floor, and unreachable by any theme
+   because an inline style beats every stylesheet. A class and a token fix both. */
+.cl-mv .cl-mv-obj .cl-mv-oat { color: var(--mv-oat-ink, #687281); font-weight: 400; }
 .cl-mv .cl-mv-obj.is-dim { opacity: 0.4; filter: grayscale(0.4); }
 
 @keyframes cl-mv-enter { from { opacity: 0; transform: translateY(10px) scale(0.96); } to { opacity: 1; transform: none; } }
@@ -771,6 +775,10 @@
   min-height: 40px;
 }
 .cl-ag .cl-ag-fan.is-empty .cl-ag-cap { margin: 0; }
+/* The shared caption tone is picked for the dark strip. On the pale fan it lands
+   at 2.97:1, under the WCAG AA floor for text this size, so the fan gets its own
+   darker tone. One colour cannot serve both surfaces. */
+.cl-ag .cl-ag-fan .cl-ag-cap { color: #55776e; }
 .cl-ag .cl-ag-row {
   display: grid;
   grid-template-columns: minmax(56px, 78px) 1fr 42px;
@@ -1078,7 +1086,7 @@
 .cl-mv .cl-mv-cs-name { color: var(--mv-name-ink, #475569); }
 .cl-mv .cl-mv-cs-name::after { content: " :"; }
 .cl-mv .cl-mv-cs-val { color: var(--mv-ink); font-weight: 500; word-break: break-word; }
-.cl-mv .cl-mv-cs-row.is-empty .cl-mv-cs-val { color: var(--mv-empty-ink, #b6bcc6); font-weight: 400; font-style: italic; }
+.cl-mv .cl-mv-cs-row.is-empty .cl-mv-cs-val { color: var(--mv-empty-ink, #6d7177); font-weight: 400; font-style: italic; }
 .cl-mv .cl-mv-cs-row.is-changed { border-color: var(--mv-hot-line, #f59e0b); background: var(--mv-hot-bg, #fff7ea); box-shadow: 0 0 0 2px var(--mv-hot-ring, #fde3ad); }
 .cl-mv .cl-mv-cs-row.is-changed .cl-mv-cs-val { color: var(--mv-hot-ink, #b45309); font-weight: 700; }
 .cl-mv .cl-mv-cs-frame.enter { opacity: 0; transform: translateY(-6px) scale(0.98); }
@@ -1119,7 +1127,7 @@
 .cl-mv .cl-mv-hp-name { color: var(--mv-name-ink, #475569); }
 .cl-mv .cl-mv-hp-name::after { content: " :"; }
 .cl-mv .cl-mv-hp-val { color: var(--mv-ink); font-weight: 500; word-break: break-word; }
-.cl-mv .cl-mv-hp-row.is-empty .cl-mv-hp-val { color: var(--mv-empty-ink, #b6bcc6); font-weight: 400; font-style: italic; }
+.cl-mv .cl-mv-hp-row.is-empty .cl-mv-hp-val { color: var(--mv-empty-ink, #6d7177); font-weight: 400; font-style: italic; }
 .cl-mv .cl-mv-hp-row.is-null .cl-mv-hp-val { color: var(--mv-null-ink, #c0392b); font-weight: 700; }
 .cl-mv .cl-mv-hp-row.is-null .cl-mv-hp-val::before { content: "\2298 "; }
 .cl-mv .cl-mv-hp-ref-cell { display: inline-flex; align-items: center; gap: 6px; }
@@ -1134,7 +1142,7 @@
 .cl-mv .cl-mv-hp-type { font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-accent-ink, var(--mv-heap)); font-weight: 600; }
 .cl-mv .cl-mv-hp-no { color: var(--mv-name-ink, #475569); font-weight: 600; }
 .cl-mv .cl-mv-hp-field { display: grid; grid-template-columns: minmax(6ch, 40%) 1fr; gap: 10px; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-obj-field-ink, #334155); margin-top: 4px; }
-.cl-mv .cl-mv-hp-fkey::after { content: " ="; color: var(--mv-addr-ink, #94a3b8); }
+.cl-mv .cl-mv-hp-fkey::after { content: " ="; color: var(--mv-addr-ink, #687281); }
 .cl-mv .cl-mv-hp-field.is-hot { background: var(--mv-hot-bg, #fff7ea); border-radius: 4px; padding: 1px 5px; box-shadow: inset 0 0 0 1px var(--mv-hot-inset, #f0c14b); color: var(--mv-hot-ink, #b45309); font-weight: 700; }
 .cl-mv .cl-mv-hp-arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .cl-mv .cl-mv-hp-arrows path.cl-mv-hp-ref { fill: none; stroke: var(--mv-stack); stroke-width: 2.4; opacity: 0; transition: opacity 0.3s; }

@@ -38,7 +38,7 @@ public class CompilerService
         if (_references != null) return;
 
         var refs = new List<MetadataReference>();
-        var bootJson = await _http.GetStringAsync("_framework/blazor.boot.json");
+        var bootJson = await GetBootJsonAsync();
         using var doc = JsonDocument.Parse(bootJson);
 
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -58,6 +58,37 @@ public class CompilerService
         }
 
         _references = refs;
+    }
+
+    /// <summary>
+    /// Reads the boot manifest, retrying a few times before giving up.
+    /// </summary>
+    /// <remarks>
+    /// This runs from OnAfterRenderAsync on the very first render, which is
+    /// while the Blazor loader may still be finishing with the same file. The
+    /// browser aborts the duplicate request, the fetch surfaces as "TypeError:
+    /// Failed to fetch", and because nothing caught it the component died and
+    /// the Run button sat on "Starting compiler..." forever. A transient abort
+    /// during startup must not permanently disable the compiler, and a real
+    /// failure should say so rather than hang.
+    /// </remarks>
+    private async Task<string> GetBootJsonAsync()
+    {
+        Exception? last = null;
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                return await _http.GetStringAsync("_framework/blazor.boot.json");
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+                await Task.Delay(150 * (attempt + 1));
+            }
+        }
+        throw new InvalidOperationException(
+            "Could not read the compiler's boot manifest after several attempts.", last);
     }
 
     private static void CollectAssemblyNames(JsonElement element, HashSet<string> names)

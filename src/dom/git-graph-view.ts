@@ -70,6 +70,19 @@ function laneVar(lane: number): string {
   return `var(--clg-lane-${i}, ${LANE_FALLBACK[i]})`;
 }
 
+/**
+ * A lane colour dark enough to carry white label text.
+ *
+ * The lane colours are chosen for graph strokes, where nothing sits on top of
+ * them. A branch chip reuses the same colour as a background under white 11px
+ * text, and the teal lane lands at 2.49:1 - well under the WCAG AA floor. 70% of
+ * the lane over black clears 4.5:1 on every lane and still reads as that lane's
+ * colour, so a chip stays recognisably tied to its branch.
+ */
+function laneChipVar(lane: number): string {
+  return `color-mix(in srgb, ${laneVar(lane)} 70%, #000)`;
+}
+
 /** The commit HEAD resolves to, or null when the branch is unborn. */
 function headCommit(state: RepoState): Hash | null {
   if (state.head.kind === "detached") return state.head.commit;
@@ -337,7 +350,7 @@ export class GitGraph {
         if (this.ghost.has(commit)) pill.classList.add("cl-git-ghost");
         pill.textContent = chip.label;
         if (chip.kind === "branch") {
-          pill.style.background = laneVar(laneOf.get(commit) ?? 0);
+          pill.style.background = laneChipVar(laneOf.get(commit) ?? 0);
           pill.dataset.ref = `refs/heads/${chip.label}`;
         } else {
           pill.dataset.ref = `refs/tags/${chip.label}`;
