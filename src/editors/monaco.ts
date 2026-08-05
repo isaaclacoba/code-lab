@@ -67,6 +67,12 @@ export class MonacoEditor implements EditorAdapter {
       insertSpaces: true,
       scrollBeyondLastLine: false,
       bracketPairColorization: { enabled: true },
+      // Breathing room so the first and last lines are not welded to the frame.
+      // This is Monaco's OWN padding, not CSS on the host: `getContentHeight`
+      // counts it, so an auto-height editor grows to include it. CSS padding on
+      // the host would leave the height unchanged and quietly clip the last
+      // line instead.
+      padding: { top: 12, bottom: 12 },
     });
     if (opts.autoHeight) this.enableAutoHeight(host, opts.autoHeight);
   }
