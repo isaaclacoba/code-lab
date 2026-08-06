@@ -229,6 +229,9 @@ test("openRaw puts the real hashed bytes on screen, header and all", () => {
 
   assert.ok(!textOf(plain).includes("blob 12"), "payload view must stay payload");
   // The exact bytes real git hashes to 3b18e512... - the whole point of the
-  // lesson, so it has to survive the view and not just the resolver.
-  assert.match(textOf(raw), /blob 12\\0hello world/);
+  // lesson, so it has to survive the view and not just the resolver. The header
+  // gets its own line, or a long commit body runs into it and reads as garbage.
+  const lines = textOf(raw).split("\n");
+  assert.ok(lines.includes("blob 12\\0"), "header on its own line");
+  assert.ok(lines.includes("hello world"), "body below it");
 });

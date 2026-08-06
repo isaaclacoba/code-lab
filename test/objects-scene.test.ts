@@ -242,7 +242,11 @@ test("openRaw shows the exact bytes git hashes, header included", () => {
   const plain = openObject(replay, "blob");
   const raw = openObject(replay, "blob", true);
   assert.equal(plain!.text, "hello world\n");
-  assert.equal(raw!.text, "blob 12\\0hello world\n");
+  assert.equal(plain!.header, undefined);
+  // The header comes back separately so a view can give it its own line; the
+  // NUL stays on the header, which is where it is in the bytes.
+  assert.equal(raw!.header, "blob 12\\0");
+  assert.equal(raw!.text, "hello world\n");
   // The id is the hash of exactly those bytes - proved against real git.
   assert.equal(raw!.id, "3b18e512dba79e4c8300dd08aeb37f8e728b8dad");
 });

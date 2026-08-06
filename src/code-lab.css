@@ -1729,3 +1729,7 @@
   color: #6f7a86;
   margin-bottom: 4px;
 }
+
+.cl-ob-rawhead {
+  color: var(--mv-dim, #8b98a5);
+}

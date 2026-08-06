@@ -65,9 +65,12 @@ export class ObjectsView implements Panel {
     const opened = scene.open ? openObject(replay, scene.open, scene.openRaw) : null;
     this.openEl.hidden = !opened;
     if (opened) {
+      const rawHead = opened.header
+        ? `<span class="cl-ob-rawhead">${escapeHtml(opened.header)}</span>\n`
+        : "";
       this.openEl.innerHTML =
         `<span class="cl-ob-openhead">${escapeHtml(opened.type)} ${short(opened.id)}</span>\n` +
-        escapeHtml(opened.text);
+        rawHead + escapeHtml(opened.text);
     }
 
     this.noteEl.innerHTML = scene.note ? escapeHtml(scene.note) : "";

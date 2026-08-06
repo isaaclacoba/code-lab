@@ -311,7 +311,7 @@ export function openObject(
   replay: Replay,
   type: "blob" | "tree" | "commit",
   raw = false,
-): { id: ObjectId; type: string; text: string } | null {
+): { id: ObjectId; type: string; text: string; header?: string } | null {
   let found: StoredObject | null = null;
   for (const object of replay.store.objects.values()) {
     if (object.type === type) found = object;
@@ -334,16 +334,20 @@ export function openObject(
     // raw bytes rather than forty hex characters. `cat-file -p` is a prettifier.
     return {
       id: found.id, type,
+      header: `${type} ${found.body.length}\\0`,
       text: found.entries
         .map((e) => `${e.mode} ${e.name}\\0<20 raw bytes: ${short(e.id)}...>`)
         .join("\n"),
     };
   }
   const body = new TextDecoder().decode(found.body);
-  // The NUL that separates header from content prints as nothing, so it is
-  // written the way a learner would type it into `printf`.
+  // The header is returned SEPARATELY so the view can give it its own line. The
+  // NUL prints as nothing, so it is written the way a learner would type it into
+  // `printf` - and keeping it at the end of the header line is what stops the
+  // break from reading as a newline that is not in the bytes.
   return {
     id: found.id, type,
-    text: raw ? `${type} ${found.body.length}\\0${body}` : body,
+    header: raw ? `${type} ${found.body.length}\\0` : undefined,
+    text: body,
   };
 }
