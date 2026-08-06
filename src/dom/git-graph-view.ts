@@ -61,6 +61,11 @@ export interface GitGraphOverlay {
 }
 
 type InspectHandler = (p: GitGraphInspect) => void;
+
+/** The learner wrote a file - by hand in the conflict editor, or with one of
+ *  its buttons. The board cannot change the repository itself; the plugin owns
+ *  the state, so it hears about the edit and applies it. */
+export type FileEditHandler = (path: string, text: string) => void;
 type Zone = "tree" | "index" | "repo";
 
 /** The CSS custom-property reference for a lane's colour (0-based). */
@@ -102,6 +107,7 @@ export class GitGraph {
 
   private state: RepoState | null = null;
   private readonly handlers: InspectHandler[] = [];
+  private readonly editHandlers: FileEditHandler[] = [];
 
   // The ghost overlay for the current state (see the header note).
   private ghost = new Set<Hash>();
@@ -162,8 +168,17 @@ export class GitGraph {
     this.ghost = new Set((opts?.ghost ?? []).filter((id) => !this.diverged.has(id)));
   }
 
-  on(event: "inspect", handler: InspectHandler): void {
-    if (event === "inspect") this.handlers.push(handler);
+  on(event: "inspect", handler: InspectHandler): void;
+  on(event: "fileEdit", handler: FileEditHandler): void;
+  on(event: "inspect" | "fileEdit", handler: InspectHandler | FileEditHandler): void {
+    if (event === "fileEdit") {
+      this.editHandlers.push(handler as FileEditHandler);
+      this.filePanel.onEdit((path, text) => {
+        for (const h of this.editHandlers) h(path, text);
+      });
+      return;
+    }
+    if (event === "inspect") this.handlers.push(handler as InspectHandler);
   }
 
   destroy(): void {

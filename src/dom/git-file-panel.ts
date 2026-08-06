@@ -13,6 +13,9 @@ import {
   type FilePanel,
 } from "../core/file-panel.js";
 import { escapeHtml } from "../core/narration.js";
+import { hasConflictMarkers, resolveConflicts, type ConflictChoice } from "../core/conflict-file.js";
+import { loadMonaco } from "../editors/load-monaco.js";
+import { MonacoEditor } from "../editors/monaco.js";
 
 const ZONE_LABEL: Record<PanelZone, string> = {
   tree: "Working tree",
@@ -34,6 +37,16 @@ export class GitFilePanel {
   private state: RepoState | null = null;
   /** null = decide from the repo; true/false = the learner said so. */
   private open: boolean | null = null;
+  private editHandler: ((path: string, text: string) => void) | null = null;
+  private editor: MonacoEditor | null = null;
+  /** The path Monaco is currently mounted for, so it is not torn down on every
+   *  repaint while the learner is typing in it. */
+  private editorPath: string | null = null;
+
+  /** Told when the learner writes a file. */
+  onEdit(fn: (path: string, text: string) => void): void {
+    this.editHandler = fn;
+  }
 
   constructor() {
     this.el = document.createElement("div");
@@ -50,9 +63,22 @@ export class GitFilePanel {
 
   private readonly onClick = (ev: Event): void => {
     const t = (ev.target as HTMLElement | null)?.closest<HTMLElement>(
-      "[data-file],[data-zone],[data-toggle]",
+      "[data-file],[data-zone],[data-toggle],[data-keep],[data-save]",
     );
     if (!t || !this.state) return;
+    if (t.dataset.keep) {
+      const path = t.dataset.path!;
+      const text = this.currentConflictText(path);
+      if (text !== null && this.editHandler) {
+        this.editHandler(path, resolveConflicts(text, t.dataset.keep as ConflictChoice));
+      }
+      return;
+    }
+    if (t.dataset.save) {
+      const path = t.dataset.path!;
+      if (this.editor && this.editHandler) this.editHandler(path, this.editor.getValue());
+      return;
+    }
     if (t.dataset.toggle) {
       this.open = t.getAttribute("aria-expanded") !== "true";
     } else if (t.dataset.file) {
@@ -109,7 +135,16 @@ export class GitFilePanel {
     const expanded = this.open === null ? anyDifference : this.open;
 
     const selected = p.zones.find((c) => c.zone === p.selected)!;
-    const body = p.diff ? this.diffBody(p) : this.flatBody(selected.text);
+    // A file git left markers in is the one case where reading is not enough -
+    // the learner has to change it before the merge can finish. It gets a real
+    // editor and the three shortcuts, rather than a read-only view of a problem.
+    const conflicted =
+      p.selected === "tree" && selected.present && hasConflictMarkers(selected.text);
+    const body = conflicted
+      ? this.conflictBody(p.path)
+      : p.diff
+        ? this.diffBody(p)
+        : this.flatBody(selected.text);
     const foot = p.comparedWith
       ? `${ZONE_PHRASE[p.selected]}, compared with ${ZONE_PHRASE[p.comparedWith]}`
       : selected.present
@@ -138,6 +173,59 @@ export class GitFilePanel {
           `<div class="cl-git-fp-ft">${escapeHtml(foot)}</div>` +
           `</div>`
         : "");
+
+    if (expanded && conflicted) this.mountEditor(p.path, selected.text);
+    else { this.editor = null; this.editorPath = null; }
+  }
+
+  /** The shell the editor mounts into, plus the shortcuts. */
+  private conflictBody(path: string): string {
+    const p = escapeHtml(path);
+    return (
+      `<div class="cl-git-fp-conflict">` +
+      `<div class="cl-git-fp-actions">` +
+      `<span class="cl-git-fp-note">Git could not choose. Leave the lines you want.</span>` +
+      `<button type="button" class="cl-git-fp-keep" data-keep="ours" data-path="${p}">Keep ours</button>` +
+      `<button type="button" class="cl-git-fp-keep" data-keep="theirs" data-path="${p}">Keep theirs</button>` +
+      `<button type="button" class="cl-git-fp-keep" data-keep="both" data-path="${p}">Keep both</button>` +
+      `</div>` +
+      `<div class="cl-git-fp-editor" data-editor-host="1"></div>` +
+      `<div class="cl-git-fp-actions is-end">` +
+      `<button type="button" class="cl-git-fp-save" data-save="1" data-path="${p}">Save the file</button>` +
+      `</div>` +
+      `</div>`
+    );
+  }
+
+  /** Mount Monaco once per file. Re-mounting on every repaint would take the
+   *  cursor away mid-word, so an editor already showing this path is left be. */
+  private mountEditor(path: string, text: string): void {
+    const host = this.el.querySelector<HTMLElement>("[data-editor-host]");
+    if (!host) return;
+    if (this.editorPath === path && this.editor) {
+      // Same file, new paint: put the text back only if the repo moved on.
+      if (this.editor.getValue() !== text) this.editor.setValue(text);
+      return;
+    }
+    this.editorPath = path;
+    const editor = new MonacoEditor();
+    this.editor = editor;
+    void loadMonaco()
+      .then(() => editor.mount(host, { value: text, language: "plaintext", readOnly: false }))
+      .catch(() => {
+        // No Monaco (offline, blocked CDN) must not mean no way to resolve: the
+        // three buttons above still work, and they are enough to finish.
+        host.innerHTML =
+          `<pre class="cl-git-fp-body">${escapeHtml(text)}</pre>` +
+          `<p class="cl-git-fp-ft">The editor could not load - use the buttons above.</p>`;
+        this.editor = null;
+      });
+  }
+
+  /** The marked-up text as it stands, for the shortcut buttons. */
+  private currentConflictText(path: string): string | null {
+    if (this.editor) return this.editor.getValue();
+    return this.state?.worktree.get(path)?.text ?? null;
   }
 
   private flatBody(text: string): string {

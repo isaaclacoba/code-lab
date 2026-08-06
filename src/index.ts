@@ -42,6 +42,9 @@ export { formatFileDiff as gitFormatFileDiff, diffLines as gitDiffLines } from "
 // The file panel under the git board.
 export { resolveFilePanel as gitResolveFilePanel, panelFiles as gitPanelFiles } from "./core/file-panel.js";
 export type { FilePanel, PanelZone, ZoneCopy } from "./core/file-panel.js";
+// Reading and settling a file git left markers in.
+export { findConflicts as gitFindConflicts, resolveConflicts as gitResolveConflicts, hasConflictMarkers as gitHasConflictMarkers } from "./core/conflict-file.js";
+export type { ConflictRegion, ConflictChoice } from "./core/conflict-file.js";
 export { run as gitRun } from "./core/git-cli.js";
 // git as a command set the terminal Shell can register. The shell owns tokenizing,
 // help and unknown-command handling; this is only the git subcommands.

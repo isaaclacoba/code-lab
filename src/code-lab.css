@@ -1570,3 +1570,27 @@
 .cl-git .cl-git-fp-toggle[aria-expanded="true"] .cl-git-fp-caret { transform: rotate(90deg); }
 .cl-git .cl-git-fp-summary { margin-left: auto; opacity: .6; }
 .cl-git .cl-git-fp-toggle[aria-expanded="true"] + .cl-git-fp-tabs { margin-top: .35rem; }
+
+/* The conflict editor. Monaco, because a learner settling a conflict is doing
+   the real job and should do it in a real editor - with three shortcuts above
+   it so nobody stalls on their first one. */
+.cl-git .cl-git-fp-conflict { display: block; }
+.cl-git .cl-git-fp-actions {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .3rem;
+  padding: .35rem .55rem; font-size: 11px;
+  border-bottom: 1px solid var(--clg-line);
+}
+.cl-git .cl-git-fp-actions.is-end { border-bottom: 0; border-top: 1px solid var(--clg-line); justify-content: flex-end; }
+.cl-git .cl-git-fp-note { margin-right: auto; opacity: .75; }
+.cl-git .cl-git-fp-keep,
+.cl-git .cl-git-fp-save {
+  font: inherit; padding: .12rem .55rem; cursor: pointer; color: inherit;
+  border: 1px solid var(--clg-line); border-radius: 99px; background: transparent;
+}
+.cl-git .cl-git-fp-keep:hover,
+.cl-git .cl-git-fp-save:hover { border-color: var(--clg-lane-0); }
+.cl-git .cl-git-fp-save {
+  border-color: var(--clg-staged);
+  background: color-mix(in srgb, var(--clg-staged) 14%, transparent);
+}
+.cl-git .cl-git-fp-editor { height: 190px; }
