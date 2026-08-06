@@ -190,9 +190,16 @@ export interface ChainRow {
   body?: string;
   /** The ids this row names, taken from the OBJECT - a commit names its tree and
    *  its parents, a blob names nothing. Never inferred from what happens to be
-   *  drawn next: with two commits on screen that guess is simply wrong. Ids
-   *  already visible in `body` are left out rather than repeated. */
-  names: ObjectId[];
+   *  drawn next: with two commits on screen that guess is simply wrong.
+   *
+   *  Each carries the ROLE git gives it in the object (`tree`, `parent`). Two
+   *  bare ids side by side are indistinguishable, and a reader should not have
+   *  to search the page to find out which is the parent commit. */
+  names: { role: string; id: ObjectId }[];
+  /** How far this row sits under the commit that reaches it - 0 for a commit or
+   *  a ref, 1 for its tree, 2 for what that tree holds. Indentation is the only
+   *  hint that says "this belongs to the row above" without drawing lines. */
+  depth: number;
   fresh: boolean;
   /** True when no name reaches this object. */
   unreachable: boolean;
@@ -206,14 +213,22 @@ export function chainRows(replay: Replay): ChainRow[] {
   const { store, added } = replay;
   const live = store.reachable();
   const rows: ChainRow[] = [];
-  const push = (kind: ChainRow["kind"], label: string, id: ObjectId, body?: string) => {
+  const seen = new Set<ObjectId>();
+  const push = (kind: ChainRow["kind"], label: string, id: ObjectId, depth: number, body?: string) => {
+    if (seen.has(id)) return;
+    seen.add(id);
     const object = store.objects.get(id);
-    // What this object names, straight from the object. A tree's entries are
-    // already spelled out in its body, so they would only be repeated.
-    const names = object?.commit ? [object.commit.tree, ...object.commit.parents] : [];
+    // What this object names, straight from the object, each with git's own word
+    // for the role. A tree's entries are already spelled out in its body.
+    const names = object?.commit
+      ? [
+          { role: "tree", id: object.commit.tree },
+          ...object.commit.parents.map((p) => ({ role: "parent", id: p })),
+        ]
+      : [];
     rows.push({
-      kind, label, id, body,
-      names: names.filter((named) => !body?.includes(short(named))),
+      kind, label, id, body, depth,
+      names: names.filter((n) => !body?.includes(short(n.id))),
       fresh: added.has(id),
       unreachable: !live.has(id),
     });
@@ -224,40 +239,43 @@ export function chainRows(replay: Replay): ChainRow[] {
     for (const [name, id] of store.refs) {
       rows.push({
         kind: "ref", label: name.replace(/^refs\/heads\//, ""), id,
-        names: [], fresh: false, unreachable: false,
+        names: [], depth: 0, fresh: false, unreachable: false,
       });
     }
   }
 
+  // An entry may be another tree - a subdirectory - so this recurses rather
+  // than assuming a flat list.
+  const walkTree = (id: ObjectId | null, depth: number): void => {
+    const node = id ? store.objects.get(id) : undefined;
+    if (!node?.entries) return;
+    push("tree", "tree", id!, depth, treeBodyText(node.entries));
+    for (const entry of node.entries) {
+      if (store.objects.get(entry.id)?.entries) walkTree(entry.id, depth + 1);
+      else push("blob", "blob", entry.id, depth + 1, store.objects.get(entry.id)?.text);
+    }
+  };
+
+  // Each commit is followed IMMEDIATELY by the tree it names and what that tree
+  // holds. Listing every commit first and then the newest tree left the older
+  // commit's tree stranded at the bottom, past blobs belonging to another save.
   let walk: ObjectId | null | undefined = head;
-  let top: ObjectId | null = null;
+  let sawCommit = false;
   let guard = 0;
   while (walk && store.objects.get(walk)?.commit && guard++ < 64) {
     const commit: CommitFields = store.objects.get(walk)!.commit!;
-    if (!top) top = walk;
-    push("commit", "commit", walk, commit.message);
+    sawCommit = true;
+    push("commit", "commit", walk, 0, commit.message);
+    walkTree(commit.tree, 1);
     walk = commit.parents[0];
   }
-
-  const treeId = top ? store.objects.get(top)!.commit!.tree : lastTreeOf(store);
-  // Walk the tree the way it is actually shaped. An entry may be another tree -
-  // that is a subdirectory - so this recurses rather than assuming a flat list.
-  const walkTree = (id: ObjectId | null): void => {
-    const node = id ? store.objects.get(id) : undefined;
-    if (!node?.entries) return;
-    push("tree", "tree", id!, treeBodyText(node.entries));
-    for (const entry of node.entries) {
-      if (store.objects.get(entry.id)?.entries) walkTree(entry.id);
-      else push("blob", "blob", entry.id, store.objects.get(entry.id)?.text);
-    }
-  };
-  walkTree(treeId);
+  if (!sawCommit) walkTree(lastTreeOf(store), 0);
 
   for (const [id, object] of store.objects) {
-    if (rows.some((row) => row.id === id)) continue;
+    if (seen.has(id)) continue;
     // The label stays the bare type word. "unnamed" is chrome the view adds from
     // its labels, because that word translates and `blob` does not.
-    push(object.type, object.type, id,
+    push(object.type, object.type, id, 0,
       object.entries ? treeBodyText(object.entries) : object.text || object.commit?.message);
   }
   return rows;

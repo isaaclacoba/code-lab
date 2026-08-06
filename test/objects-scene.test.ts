@@ -153,7 +153,9 @@ test("chain rows read from the name down to the content", () => {
   const rows = chainRows(replay);
   assert.deepEqual(rows.map((r) => r.kind), ["ref", "commit", "tree", "blob"]);
   assert.equal(rows[0].label, "main");
-  assert.deepEqual(rows[1].names, [rows[2].id], "the commit names the tree");
+  assert.deepEqual(rows[1].names, [{ role: "tree", id: rows[2].id }], "the commit names the tree");
+  // Depth is what puts the tree visibly UNDER the commit that reaches it.
+  assert.deepEqual(rows.map((r) => r.depth), [0, 0, 1, 2]);
   assert.deepEqual(rows[2].names, [], "the tree already shows the blob id in its body");
   assert.deepEqual(rows[3].names, [], "a blob names nothing at all");
   assert.ok(rows[2].body!.includes(short(rows[3].id)));
@@ -186,7 +188,14 @@ test("a commit chain shows the parent as its own row, never nested", () => {
   const commits = rows.filter((r) => r.kind === "commit");
   assert.equal(commits.length, 2);
   assert.equal(commits[0].body, "two", "newest first");
-  assert.ok(commits[0].names.includes(commits[1].id), "and it NAMES its parent");
+  assert.ok(
+    commits[0].names.some((n) => n.role === "parent" && n.id === commits[1].id),
+    "and it NAMES its parent, saying that is what it is",
+  );
+  // Each commit is followed by ITS OWN tree. Listing both commits first
+  // stranded the older tree at the bottom, past another save's blobs.
+  const kinds = rows.map((r) => r.kind);
+  assert.deepEqual(kinds, ["ref", "commit", "tree", "blob", "commit", "tree", "blob"]);
 });
 
 // A row used to name whatever was DRAWN next, which is right by luck with one
@@ -206,14 +215,17 @@ test("what a row names comes from the object, not from the row below it", () => 
   for (const row of rows) {
     if (row.kind === "blob") assert.deepEqual(row.names, [], "a blob names nothing");
     for (const named of row.names) {
-      const target = replay.store.objects.get(named)!;
+      const target = replay.store.objects.get(named.id)!;
       const self = replay.store.objects.get(row.id)!;
       assert.ok(
-        self.commit!.tree === named || self.commit!.parents.includes(named),
-        `${row.label} ${short(row.id)} claims to name ${short(named)}, which it does not`,
+        self.commit!.tree === named.id || self.commit!.parents.includes(named.id),
+        `${row.label} ${short(row.id)} claims to name ${short(named.id)}, which it does not`,
       );
       assert.ok(target, "and the id it names is a real object");
-      assert.ok(byId.has(named), "which is on screen, so the chip can be followed");
+      assert.ok(byId.has(named.id), "which is on screen, so the chip can be followed");
+      // The role is what stops two bare ids from being indistinguishable.
+      const expected = self.commit!.tree === named.id ? "tree" : "parent";
+      assert.equal(named.role, expected, "each chip says what git calls it");
     }
   }
 });

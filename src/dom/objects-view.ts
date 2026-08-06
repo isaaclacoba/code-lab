@@ -156,11 +156,21 @@ function chainHtml(rows: ChainRow[], labels: VizLabels): string {
       const kind = row.unreachable
         ? `${escapeHtml(row.label)} (${escapeHtml(labels.objUnnamed)})`
         : escapeHtml(row.label);
+      // `tree` and `parent` are git's own field names and stay untranslated,
+      // like `blob`. Without them two ids sit side by side looking identical.
       const names = row.names.length
-        ? ` ${escapeHtml(labels.objNames)} ${row.names.map((id) => `<span class="cl-ob-names">${short(id)}</span>`).join(" ")}`
+        ? ` ${escapeHtml(labels.objNames)} ${row.names
+            .map(
+              (n) =>
+                `<span class="cl-ob-role">${escapeHtml(n.role)}</span>` +
+                `<span class="cl-ob-names">${short(n.id)}</span>`,
+            )
+            .join(" ")}`
         : "";
+      // Indentation is the quiet hint that this row belongs to the one above.
+      const indent = row.depth > 0 ? ` style="margin-left:${row.depth * 1.1}rem"` : "";
       return (
-        `<div class="${classes.join(" ")}">` +
+        `<div class="${classes.join(" ")}"${indent}>` +
         `<span class="cl-ob-kind">${kind}</span>` +
         `<span class="cl-ob-id">${short(row.id)}</span>` +
         `<span class="cl-ob-body">${escapeHtml(row.body || "")}${names}</span>` +

@@ -1685,6 +1685,14 @@
 }
 /* The chip repeats the next row's id verbatim, so the link can be followed by
    eye instead of trusted. */
+.cl-ob-role {
+  margin-right: 0.3em;
+  font-size: 0.85em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mv-dim, #8b98a5);
+}
+
 .cl-ob-names {
   display: inline-block;
   background: #eef1f6;
