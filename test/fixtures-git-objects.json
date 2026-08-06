@@ -1,0 +1,72 @@
+[
+  {
+    "type": "blob",
+    "label": "blob-empty",
+    "preimageEscaped": "blob 0\\0",
+    "preimageHexIfBinary": null,
+    "sha": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+  },
+  {
+    "type": "blob",
+    "label": "blob-hello-world",
+    "preimageEscaped": "blob 12\\0hello world\\n",
+    "preimageHexIfBinary": null,
+    "sha": "3b18e512dba79e4c8300dd08aeb37f8e728b8dad"
+  },
+  {
+    "type": "blob",
+    "label": "blob-multiline",
+    "preimageEscaped": "blob 29\\0line one\\nline two\\nline three\\n",
+    "preimageHexIfBinary": null,
+    "sha": "0c2aa38e0600e0d2df09c2f84664d8a14f899879"
+  },
+  {
+    "type": "blob",
+    "label": "blob-utf8-cafe",
+    "preimageEscaped": "blob 6\\0caf\\xc3\\xa9\\n",
+    "preimageHexIfBinary": "626c6f62203600636166c3a90a",
+    "sha": "572eb43fe8e34fb87d01c69e01151ff696022924"
+  },
+  {
+    "type": "tree",
+    "label": "tree-flat-two-files",
+    "preimageEscaped": "tree 66\\x00100644 a.txt\\0JX\\0pR\\xa6_\\xbc/\\xc3\\xf9\\x10\\xf2\\x85_E\\xa4\\x05\\x8et100755 b.txt\\0e\\xb2\\xdf\\x87\\xf7\\xdf:\\xee\\xde\\xf0K\\xe9g\\x03\\xe5Z\\xc1\\x9c,\\xfb",
+    "preimageHexIfBinary": "747265652036360031303036343420612e747874004a58007052a65fbc2fc3f910f2855f45a4058e7431303037353520622e7478740065b2df87f7df3aeedef04be96703e55ac19c2cfb",
+    "sha": "d067e4f1a1b6abf1dd6fe234d7f95088f6e56c7d"
+  },
+  {
+    "type": "tree",
+    "label": "tree-with-subdirectory",
+    "preimageEscaped": "tree 63\\x00100644 a.txt\\0JX\\0pR\\xa6_\\xbc/\\xc3\\xf9\\x10\\xf2\\x85_E\\xa4\\x05\\x8et40000 sub\\0\\xef\\x1e5\\xb46\\x0c\\\":\\xe2d\\xb0\\xccn\\xbd\\xcfx\\x16|\\xcd\\xfc",
+    "preimageHexIfBinary": "747265652036330031303036343420612e747874004a58007052a65fbc2fc3f910f2855f45a4058e7434303030302073756200ef1e35b4360c223ae264b0cc6ebdcf78167ccdfc",
+    "sha": "b52941b9490611b6593612f8f510903234393914"
+  },
+  {
+    "type": "tree",
+    "label": "tree-sort-a.txt-vs-dir-a",
+    "preimageEscaped": "tree 61\\x00100644 a.txt\\0JX\\0pR\\xa6_\\xbc/\\xc3\\xf9\\x10\\xf2\\x85_E\\xa4\\x05\\x8et40000 a\\0\\x03\\x9e\\xc9\\xd5\\xdbT8\\x9d:\\x96kv5\\x92\\x1d\\xb4\\xbb\\xb1s\\xe6",
+    "preimageHexIfBinary": "747265652036310031303036343420612e747874004a58007052a65fbc2fc3f910f2855f45a4058e743430303030206100039ec9d5db54389d3a966b7635921db4bbb173e6",
+    "sha": "9a2cfd6eb22be2c895d0a4757532a9d5b878920e"
+  },
+  {
+    "type": "tree",
+    "label": "tree-sort-dir-a-vs-a0.txt",
+    "preimageEscaped": "tree 62\\x0040000 a\\0\\x03\\x9e\\xc9\\xd5\\xdbT8\\x9d:\\x96kv5\\x92\\x1d\\xb4\\xbb\\xb1s\\xe6100644 a0.txt\\0&\\xafj\\x86[a\\xe9\\xa4~$\\xeab\\x14\\xa6LL\\xc2\\x94\\xc2\\x15",
+    "preimageHexIfBinary": "74726565203632003430303030206100039ec9d5db54389d3a966b7635921db4bbb173e63130303634342061302e7478740026af6a865b61e9a47e24ea6214a64c4cc294c215",
+    "sha": "7b7f8ede6de95c4be1ef591bd58e29c7d8fd9c3d"
+  },
+  {
+    "type": "commit",
+    "label": "commit-root-no-parent",
+    "preimageEscaped": "commit 181\\0tree d067e4f1a1b6abf1dd6fe234d7f95088f6e56c7d\\nauthor Vector Author <vectors@example.com> 1700000000 +0000\\ncommitter Vector Author <vectors@example.com> 1700000000 +0000\\n\\nfirst save\\n",
+    "preimageHexIfBinary": null,
+    "sha": "3655757fbb278168f9da9caf06cc5ba1e854f8b9"
+  },
+  {
+    "type": "commit",
+    "label": "commit-with-parent",
+    "preimageEscaped": "commit 230\\0tree b52941b9490611b6593612f8f510903234393914\\nparent 3655757fbb278168f9da9caf06cc5ba1e854f8b9\\nauthor Vector Author <vectors@example.com> 1700003600 +0100\\ncommitter Vector Author <vectors@example.com> 1700003600 +0100\\n\\nsecond save\\n",
+    "preimageHexIfBinary": null,
+    "sha": "aac6f24bdbd26c7b16c02d7780ceb967844fe15f"
+  }
+]

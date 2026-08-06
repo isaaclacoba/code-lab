@@ -39,6 +39,7 @@ import { TranscriptView } from "./transcript-view.js";
 import { RetrievalView } from "./retrieval-view.js";
 import { PlanboardView } from "./planboard-view.js";
 import { RepoView } from "./repo-view.js";
+import { ObjectsView } from "./objects-view.js";
 import { VizControls } from "./viz-controls.js";
 import type { VizControlsHandlers } from "./viz-controls.js";
 
@@ -102,6 +103,7 @@ export class MemoryViz {
     retrieval: () => new RetrievalView(),
     planboard: () => new PlanboardView(),
     repo: () => new RepoView(),
+    objects: () => new ObjectsView(),
     controls: (_spec, ctx) =>
       (this.controls = new VizControls(ctx.actions, ctx.handlers, ctx.nextHref, ctx.legend, ctx.nextLabel, ctx.vizLabels)),
   };

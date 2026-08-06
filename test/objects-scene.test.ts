@@ -1,0 +1,188 @@
+// test/objects-scene.test.ts - the `objects` scene: acts in, a store out.
+//
+// WHY THIS EXISTS
+// A lesson step describes ACTS in plain words and never a git command, so this
+// vocabulary is what every Inside-git lesson is written in. Two things have to
+// hold: the ids the replay produces are still real git's, and an authoring slip
+// degrades to a visible blank rather than taking the lesson down.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  DEFAULT_AUTHOR,
+  chainRows,
+  replayObjects,
+  resolveObjects,
+  short,
+  type ObjectAct,
+} from "../src/core/objects-scene.js";
+
+const run = (acts: ObjectAct[], extra: Record<string, unknown> = {}) => {
+  const scene = resolveObjects({ acts, ...extra });
+  assert.ok(scene);
+  return { scene, replay: replayObjects(scene) };
+};
+
+test("a scene with no acts resolves to null instead of throwing", () => {
+  assert.equal(resolveObjects(undefined), null);
+  assert.equal(resolveObjects({} as never), null);
+});
+
+test("lens defaults to folder and only accepts the three it knows", () => {
+  assert.equal(resolveObjects({ acts: [] })!.lens, "folder");
+  assert.equal(resolveObjects({ acts: [], lens: "chain" })!.lens, "chain");
+  assert.equal(resolveObjects({ acts: [], lens: "both" })!.lens, "both");
+  assert.equal(resolveObjects({ acts: [], lens: "sideways" as never })!.lens, "folder");
+});
+
+test("fresh defaults to the last act and is clamped to what exists", () => {
+  const acts: ObjectAct[] = [
+    { act: "write", path: "a.txt", text: "a\n" },
+    { act: "store", path: "a.txt" },
+  ];
+  assert.equal(resolveObjects({ acts })!.fresh.length, 1);
+  assert.equal(resolveObjects({ acts, fresh: 0 })!.fresh.length, 0);
+  assert.equal(resolveObjects({ acts, fresh: 9 })!.fresh.length, 2);
+});
+
+test("writing a file changes the folder and stores nothing", () => {
+  const { replay } = run([{ act: "write", path: "hello.txt", text: "hello world\n" }]);
+  assert.equal(replay.store.worktree.get("hello.txt"), "hello world\n");
+  assert.equal(replay.store.objects.size, 0, "a file in the folder is not yet an object");
+});
+
+test("storing a file produces the id real git produces", () => {
+  const { replay } = run([
+    { act: "write", path: "hello.txt", text: "hello world\n" },
+    { act: "store", path: "hello.txt" },
+  ]);
+  assert.ok(replay.store.objects.has("3b18e512dba79e4c8300dd08aeb37f8e728b8dad"));
+});
+
+test("a full save builds blob, tree and commit, and the name points at the commit", () => {
+  const { replay } = run([
+    { act: "write", path: "hello.txt", text: "hello world\n" },
+    { act: "store", path: "hello.txt" },
+    { act: "list" },
+    { act: "save", message: "save the greeting" },
+    { act: "name", ref: "refs/heads/main" },
+  ]);
+  const types = [...replay.store.objects.values()].map((o) => o.type);
+  assert.deepEqual(types.sort(), ["blob", "commit", "tree"]);
+  assert.equal(replay.store.refs.get("refs/heads/main"), replay.store.headId());
+  assert.equal(replay.store.reachable().size, 3, "every object is reachable from the one name");
+});
+
+test("ids are deterministic, so a lesson can quote one in its prose", () => {
+  const acts: ObjectAct[] = [
+    { act: "write", path: "hello.txt", text: "hello world\n" },
+    { act: "store", path: "hello.txt" },
+    { act: "list" },
+    { act: "save", message: "save the greeting" },
+  ];
+  assert.equal(run(acts).replay.store.headId(), run(acts).replay.store.headId());
+  assert.notEqual(
+    run(acts).replay.store.objects.size,
+    run([...acts, { act: "save", message: "again" }]).replay.store.objects.size,
+  );
+});
+
+test("editing a file adds a second blob and leaves the first alone", () => {
+  const { replay } = run([
+    { act: "write", path: "hello.txt", text: "hello world\n" },
+    { act: "store", path: "hello.txt" },
+    { act: "write", path: "hello.txt", text: "hello world\ngoodbye\n" },
+    { act: "store", path: "hello.txt" },
+  ]);
+  assert.equal(replay.store.objects.size, 2);
+  assert.ok(replay.store.objects.has("3b18e512dba79e4c8300dd08aeb37f8e728b8dad"));
+});
+
+test("naming an earlier save leaves the later ones unreachable but stored", () => {
+  const { replay } = run([
+    { act: "write", path: "a.txt", text: "one\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "one" },
+    { act: "write", path: "a.txt", text: "two\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "two" },
+    { act: "name", ref: "refs/heads/main", at: "one" },
+  ]);
+  const live = replay.store.reachable();
+  const unreachable = [...replay.store.objects.keys()].filter((id) => !live.has(id));
+  assert.equal(unreachable.length, 3, "the second save's commit, tree and blob");
+  for (const id of unreachable) assert.ok(replay.store.objects.has(id));
+});
+
+test("acts that cannot apply are skipped, not thrown", () => {
+  const { replay } = run([
+    { act: "store", path: "missing.txt" },
+    { act: "list" },
+    { act: "save", message: "nothing to save" },
+    { act: "name", ref: "refs/heads/main", at: "no such save" },
+  ]);
+  assert.equal(replay.store.objects.size, 0);
+  assert.equal(replay.store.refs.size, 0);
+});
+
+test("only objects created by the fresh acts are marked", () => {
+  const acts: ObjectAct[] = [
+    { act: "write", path: "a.txt", text: "one\n" },
+    { act: "store", path: "a.txt" },
+    { act: "list" },
+  ];
+  const scene = resolveObjects({ acts, fresh: 1 })!;
+  const replay = replayObjects(scene);
+  assert.equal(replay.added.size, 1, "the tree, not the blob before it");
+  const tree = [...replay.store.objects.values()].find((o) => o.type === "tree")!;
+  assert.ok(replay.added.has(tree.id));
+});
+
+test("the default author is used when a scene does not set one", () => {
+  assert.equal(resolveObjects({ acts: [] })!.author, DEFAULT_AUTHOR);
+  assert.equal(resolveObjects({ acts: [], author: "X <x@y> 1 +0000" })!.author, "X <x@y> 1 +0000");
+});
+
+test("chain rows read from the name down to the content", () => {
+  const { replay } = run([
+    { act: "write", path: "hello.txt", text: "hello world\n" },
+    { act: "store", path: "hello.txt" },
+    { act: "list" },
+    { act: "save", message: "save the greeting" },
+    { act: "name", ref: "refs/heads/main" },
+  ]);
+  const rows = chainRows(replay);
+  assert.deepEqual(rows.map((r) => r.kind), ["ref", "commit", "tree", "blob"]);
+  assert.equal(rows[0].label, "main");
+  assert.equal(rows[1].names, rows[2].id, "the commit names the tree");
+  assert.equal(rows[2].names, undefined, "the tree already shows the blob id in its body");
+  assert.ok(rows[2].body!.includes(short(rows[3].id)));
+  assert.ok(rows.every((r) => !r.unreachable));
+});
+
+test("chain rows mark what no name reaches", () => {
+  const { replay } = run([
+    { act: "write", path: "a.txt", text: "one\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "one" },
+    { act: "name", ref: "refs/heads/main" },
+    { act: "write", path: "a.txt", text: "two\n" },
+    { act: "store", path: "a.txt" },
+  ]);
+  const rows = chainRows(replay);
+  const orphans = rows.filter((r) => r.unreachable);
+  assert.equal(orphans.length, 1);
+  assert.equal(orphans[0].label, "blob (unnamed)");
+});
+
+test("a commit chain shows the parent as its own row, never nested", () => {
+  const { replay } = run([
+    { act: "write", path: "a.txt", text: "one\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "one" },
+    { act: "write", path: "a.txt", text: "two\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "two" },
+    { act: "name", ref: "refs/heads/main" },
+  ]);
+  const rows = chainRows(replay);
+  const commits = rows.filter((r) => r.kind === "commit");
+  assert.equal(commits.length, 2);
+  assert.equal(commits[0].body, "two", "newest first");
+  assert.equal(commits[0].names, commits[1].id, "and it NAMES its parent");
+});

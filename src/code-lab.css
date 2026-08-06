@@ -645,6 +645,7 @@
 .cl-tx .cl-tx-cap,
 .cl-rg .cl-rg-cap,
 .cl-rp .cl-rp-cap,
+.cl-ob .cl-ob-cap,
 .cl-pb .cl-pb-cap {
   display: block;
   font-family: var(--cl-mono);
@@ -1605,3 +1606,101 @@
   background: color-mix(in srgb, var(--clg-staged) 14%, transparent);
 }
 .cl-git .cl-git-fp-editor { height: 190px; }
+
+/* ---------------------------------------------------------------------------
+   The `objects` scene - a git object store, drawn as the folder on disk and as
+   the chain of names through it.
+
+   The chain is ROWS, not boxes with arrows. Measured inside this widget: the
+   visual panel is 562px at a 1440 viewport and existing viz lessons run about
+   487px tall. A horizontal chain needs 664px and wraps into an unreadable
+   order; a vertical stack of boxes reaches 721px and pushes the last object
+   below the fold. Rows fit in 478px.
+   --------------------------------------------------------------------------- */
+.cl-ob { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+.cl-ob-folder {
+  margin: 0;
+  background: #1d2130;
+  color: #dfe6e2;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 11.5px);
+  line-height: 1.8;
+  white-space: pre;
+  overflow-x: auto;
+}
+.cl-ob-dim { color: #8b98a5; }
+.cl-ob-new { color: #55c86a; }
+.cl-ob-type { color: #9fb3c8; }
+
+/* The rail: one vertical line, with an elbow into each row, so the rows read as
+   one run of names rather than an unrelated list. */
+.cl-ob-chain { position: relative; padding-left: 16px; }
+.cl-ob-chain::before {
+  content: "";
+  position: absolute;
+  left: 6px; top: 14px; bottom: 14px;
+  width: 2px;
+  background: #d6ddd9;
+}
+.cl-ob-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 62px 68px 1fr;
+  align-items: baseline;
+  gap: 8px;
+  margin: 3px 0;
+  padding: 7px 10px;
+  border: 1px solid #e3e8e6;
+  border-radius: 10px;
+  background: #fff;
+}
+.cl-ob-row::before {
+  content: "";
+  position: absolute;
+  left: -10px; top: 50%;
+  width: 10px; height: 2px;
+  background: #d6ddd9;
+}
+.cl-ob-fresh { border-color: #9fd0be; box-shadow: 0 0 0 3px rgba(31, 111, 95, 0.1); }
+.cl-ob-orphan { opacity: 0.55; border-style: dashed; }
+
+.cl-ob-kind {
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 10px);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #6f7a86;
+}
+.cl-ob-id { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 11.5px); color: #1a1f5c; }
+.cl-ob-body {
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 11.5px);
+  color: #565b68;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The chip repeats the next row's id verbatim, so the link can be followed by
+   eye instead of trusted. */
+.cl-ob-names {
+  display: inline-block;
+  background: #eef1f6;
+  border-radius: 6px;
+  padding: 0 6px;
+  color: #1a1f5c;
+}
+.cl-ob-ref {
+  display: inline-flex;
+  margin-left: -16px;
+  background: #f0b429;
+  color: #3a2c05;
+  border-radius: 999px;
+  padding: 2px 11px;
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 11.5px);
+  font-weight: 600;
+}
+.cl-ob-empty { margin: 0; color: #6f7a86; font-size: calc(var(--mv-fs, 1) * 13px); }

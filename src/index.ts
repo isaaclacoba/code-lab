@@ -172,6 +172,19 @@ export type {
 export { resolvePlan, planProgress } from "./core/planboard-model.js";
 export type { RepoScene, SceneFile } from "./core/repo-scene.js";
 export { resolveRepo } from "./core/repo-scene.js";
+export type {
+  ChainRow, ObjectAct, ObjectLens, ObjectsScene, Replay, ResolvedObjectsScene,
+} from "./core/objects-scene.js";
+export {
+  DEFAULT_AUTHOR, chainRows, replayObjects, resolveObjects, short,
+} from "./core/objects-scene.js";
+export type {
+  CommitFields, HeadState, ObjectId, ObjectType, StoredObject, TreeEntry,
+} from "./core/git-objects.js";
+export {
+  MODE_DIR, MODE_EXEC, MODE_FILE, ObjectStore, bytesOf, commitBody, hashObject,
+  objectBytes, sha1, treeBody, treeSortKey,
+} from "./core/git-objects.js";
 
 export type { CodeMark } from "./core/code-marks.js";
 export {
