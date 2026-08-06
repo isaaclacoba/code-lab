@@ -330,42 +330,33 @@ export function openObject(
   type: "blob" | "tree" | "commit",
   raw = false,
 ): { id: ObjectId; type: string; text: string; header?: string } | null {
+  // The LAST match is the newest - the store inserts in write order.
   let found: StoredObject | null = null;
   for (const object of replay.store.objects.values()) {
     if (object.type === type) found = object;
   }
   if (!found) return null;
+  // `raw` exposes the stored header as its own field so a view can give it its
+  // own line. It is a no-op for a TREE: a tree's entry ids are twenty binary
+  // bytes, and the only way to "show" them as text is to invent a rendering,
+  // which would be a picture of bytes rather than the bytes. A tree is always
+  // shown the way `git cat-file -p` prints it, and says so.
+  const header = raw && !found.entries ? `${type} ${found.body.length}\\0` : undefined;
   if (found.entries) {
     const kindOf = (id: ObjectId) =>
       replay.store.objects.get(id)?.entries ? "tree" : "blob";
-    if (!raw) {
-      // What `git cat-file -p` prints: the mode padded to six digits, the type
-      // word, the id in hex, then the name.
-      return {
-        id: found.id, type,
-        text: found.entries
-          .map((e) => `${e.mode.padStart(6, "0")} ${kindOf(e.id)} ${e.id}\t${e.name}`)
-          .join("\n"),
-      };
-    }
-    // What is actually STORED: no padding, no type word, and the id as twenty
-    // raw bytes rather than forty hex characters. `cat-file -p` is a prettifier.
     return {
-      id: found.id, type,
-      header: `${type} ${found.body.length}\\0`,
+      id: found.id,
+      type,
       text: found.entries
-        .map((e) => `${e.mode} ${e.name}\\0<20 raw bytes: ${short(e.id)}...>`)
+        .map((e) => `${e.mode.padStart(6, "0")} ${kindOf(e.id)} ${e.id}\t${e.name}`)
         .join("\n"),
     };
   }
-  const body = new TextDecoder().decode(found.body);
-  // The header is returned SEPARATELY so the view can give it its own line. The
-  // NUL prints as nothing, so it is written the way a learner would type it into
-  // `printf` - and keeping it at the end of the header line is what stops the
-  // break from reading as a newline that is not in the bytes.
   return {
-    id: found.id, type,
-    header: raw ? `${type} ${found.body.length}\\0` : undefined,
-    text: body,
+    id: found.id,
+    type,
+    header,
+    text: new TextDecoder().decode(found.body),
   };
 }

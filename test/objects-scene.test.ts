@@ -286,3 +286,37 @@ test("a path with a slash builds a real subtree - ids match git", () => {
   // git writes ONE tree object per directory, so two directories means two.
   assert.equal(ids.filter((s) => s.startsWith("tree")).length, 2);
 });
+
+test("openRaw is a no-op for a tree, whose ids are binary", () => {
+  const replay = replayObjects(
+    resolveObjects({
+      acts: [
+        { act: "write", path: "notes.md", text: "hello world\n" },
+        { act: "store", path: "notes.md" },
+        { act: "list" },
+      ],
+    })!,
+  );
+  // Rendering twenty binary bytes as text means inventing a picture of them.
+  // A tree is shown decoded, and never claims to be showing raw bytes.
+  const raw = openObject(replay, "tree", true)!;
+  assert.equal(raw.header, undefined);
+  assert.match(raw.text, /^100644 blob [0-9a-f]{40}\tnotes\.md$/);
+});
+
+test("an object shared by two commits is drawn once, under the newer one", () => {
+  const { replay } = run([
+    { act: "write", path: "a.txt", text: "one\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "one" },
+    { act: "write", path: "b.txt", text: "two\n" },
+    { act: "store", path: "b.txt" }, { act: "list" }, { act: "save", message: "two" },
+    { act: "name", ref: "refs/heads/main" },
+  ]);
+  const rows = chainRows(replay);
+  const aBlob = rows.filter((r) => r.body === "one\n");
+  // git stores it once, so the picture shows it once. The older commit's tree
+  // row still spells out the id, so the link is not lost.
+  assert.equal(aBlob.length, 1, "one object, one row");
+  const olderTree = rows[rows.length - 1];
+  assert.ok(olderTree.body!.includes("a.txt -> "), "and the older tree still names it");
+});
