@@ -163,8 +163,11 @@ export interface ChainRow {
   id: ObjectId;
   /** The object's own content, one short line. */
   body?: string;
-  /** The id this row names, when that is not already visible in `body`. */
-  names?: ObjectId;
+  /** The ids this row names, taken from the OBJECT - a commit names its tree and
+   *  its parents, a blob names nothing. Never inferred from what happens to be
+   *  drawn next: with two commits on screen that guess is simply wrong. Ids
+   *  already visible in `body` are left out rather than repeated. */
+  names: ObjectId[];
   fresh: boolean;
   /** True when no name reaches this object. */
   unreachable: boolean;
@@ -179,13 +182,25 @@ export function chainRows(replay: Replay): ChainRow[] {
   const live = store.reachable();
   const rows: ChainRow[] = [];
   const push = (kind: ChainRow["kind"], label: string, id: ObjectId, body?: string) => {
-    rows.push({ kind, label, id, body, fresh: added.has(id), unreachable: !live.has(id) });
+    const object = store.objects.get(id);
+    // What this object names, straight from the object. A tree's entries are
+    // already spelled out in its body, so they would only be repeated.
+    const names = object?.commit ? [object.commit.tree, ...object.commit.parents] : [];
+    rows.push({
+      kind, label, id, body,
+      names: names.filter((named) => !body?.includes(short(named))),
+      fresh: added.has(id),
+      unreachable: !live.has(id),
+    });
   };
 
   const head = store.headId();
   if (head) {
     for (const [name, id] of store.refs) {
-      rows.push({ kind: "ref", label: name.replace(/^refs\/heads\//, ""), id, fresh: false, unreachable: false });
+      rows.push({
+        kind: "ref", label: name.replace(/^refs\/heads\//, ""), id,
+        names: [], fresh: false, unreachable: false,
+      });
     }
   }
 
@@ -202,7 +217,7 @@ export function chainRows(replay: Replay): ChainRow[] {
   const treeId = top ? store.objects.get(top)!.commit!.tree : lastTreeOf(store);
   const tree = treeId ? store.objects.get(treeId) : undefined;
   if (tree?.entries) {
-    push("tree", "tree", treeId!, tree.entries.map((e) => `${e.name} -> ${short(e.id)}`).join(", "));
+    push("tree", "tree", treeId!, treeBodyText(tree.entries));
     for (const entry of tree.entries) {
       push("blob", "blob", entry.id, store.objects.get(entry.id)?.text);
     }
@@ -210,16 +225,14 @@ export function chainRows(replay: Replay): ChainRow[] {
 
   for (const [id, object] of store.objects) {
     if (rows.some((row) => row.id === id)) continue;
-    push(object.type, `${object.type} (unnamed)`, id, object.text || object.commit?.message);
-  }
-
-  // Each row names the next one, unless its own body already shows that id.
-  for (let i = 0; i < rows.length - 1; i++) {
-    const next = rows[i + 1];
-    if (rows[i].kind === "ref" || next.kind === "ref" || next.unreachable) continue;
-    if (!rows[i].body?.includes(short(next.id))) rows[i].names = next.id;
+    push(object.type, `${object.type} (unnamed)`, id,
+      object.entries ? treeBodyText(object.entries) : object.text || object.commit?.message);
   }
   return rows;
+}
+
+function treeBodyText(entries: { name: string; id: ObjectId }[]): string {
+  return entries.map((entry) => `${entry.name} -> ${short(entry.id)}`).join(", ");
 }
 
 /** With nothing committed yet there is still a picture worth drawing: the most

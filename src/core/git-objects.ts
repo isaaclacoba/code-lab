@@ -60,11 +60,19 @@ export const MODE_EXEC = "100755";
 /** Five characters. `git cat-file -p` prints `040000`; the object holds `40000`. */
 export const MODE_DIR = "40000";
 
-const encoder = new TextEncoder();
+let encoder: TextEncoder | null = null;
 
 /** Text to bytes. Everything downstream works in bytes, because the object
- *  header counts bytes and `string.length` counts characters. */
+ *  header counts bytes and `string.length` counts characters.
+ *
+ *  Built on first use, never at module load: this file is inside the bundle that
+ *  every page and every course tool evaluates, and a `new TextEncoder()` at the
+ *  top level throws in any host that does not define it - taking the WHOLE
+ *  bundle down, not just this scene. That is exactly what happened: the Node
+ *  sandbox the validators use has no `TextEncoder`, so `CodeLab` came back empty
+ *  and 36 unrelated tests failed. */
 export function bytesOf(text: string): Uint8Array {
+  if (!encoder) encoder = new TextEncoder();
   return encoder.encode(text);
 }
 

@@ -105,8 +105,8 @@ function chainHtml(rows: ChainRow[]): string {
       const classes = ["cl-ob-row"];
       if (row.fresh) classes.push("cl-ob-fresh");
       if (row.unreachable) classes.push("cl-ob-orphan");
-      const names = row.names
-        ? ` names <span class="cl-ob-names">${short(row.names)}</span>`
+      const names = row.names.length
+        ? ` names ${row.names.map((id) => `<span class="cl-ob-names">${short(id)}</span>`).join(" ")}`
         : "";
       return (
         `<div class="${classes.join(" ")}">` +
