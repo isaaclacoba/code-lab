@@ -139,3 +139,23 @@ test("an empty repository reports empty in the reading language", () => {
   assert.match(view.el.querySelector(".cl-ob-folder")!.textContent!, /\(vacio\)/);
   assert.match(view.el.querySelector(".cl-ob-folder")!.textContent!, /\(sin nombres\)/);
 });
+
+// `git init` really creates config, description, hooks/, info/, objects/info,
+// objects/pack and refs/tags. A learner who opens a real .git after this lesson
+// should find nothing that was hidden from them.
+test("full detail draws what git init really makes; core draws only what matters", () => {
+  const full = render({ lens: "folder", acts: [], detail: "full" });
+  const text = full.el.querySelector(".cl-ob-folder")!.textContent!;
+  for (const entry of ["config", "description", "hooks/", "info/", "pack/", "refs/tags/"]) {
+    assert.ok(text.includes(entry), `full detail should list ${entry}`);
+  }
+  const core = render({ lens: "folder", acts: [] });
+  assert.ok(!core.el.querySelector(".cl-ob-folder")!.textContent!.includes("description"));
+});
+
+// HEAD is a text file holding one line. Drawing an arrow would be a rendering of
+// the truth rather than the truth, and this track promises ordinary files.
+test("HEAD shows the line that is actually in it", () => {
+  const view = render({ lens: "folder", acts: [] });
+  assert.match(view.el.querySelector(".cl-ob-folder")!.textContent!, /HEAD\s+ref: refs\/heads\/main/);
+});

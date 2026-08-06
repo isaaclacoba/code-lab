@@ -55,7 +55,7 @@ export class ObjectsView implements Panel {
     const wantsChain = scene.lens === "chain" || scene.lens === "both";
     this.folderEl.hidden = !wantsFolder;
     this.chainEl.hidden = !wantsChain;
-    if (wantsFolder) this.folderEl.innerHTML = folderHtml(replay, this.labels);
+    if (wantsFolder) this.folderEl.innerHTML = folderHtml(replay, this.labels, scene.detail);
     if (wantsChain) this.chainEl.innerHTML = chainHtml(chainRows(replay), this.labels);
 
     this.noteEl.innerHTML = scene.note ? escapeHtml(scene.note) : "";
@@ -64,10 +64,19 @@ export class ObjectsView implements Panel {
 }
 
 /** The folder listing. Object ids are split the way git splits them on disk -
- *  two characters of directory, the rest of the name inside it. */
-function folderHtml(replay: Replay, labels: VizLabels): string {
+ *  two characters of directory, the rest of the name inside it.
+ *
+ *  `full` adds everything else `git init` really creates. It is dimmed, because
+ *  the point of showing it is that a learner opening a real `.git` finds no
+ *  surprises - not that any of it matters yet. */
+function folderHtml(replay: Replay, labels: VizLabels, detail: "core" | "full"): string {
   const { store, added } = replay;
-  const lines: string[] = [".git/", "  objects/"];
+  const lines: string[] = [".git/"];
+  if (detail === "full") {
+    lines.push(`  ${dim("config")}`, `  ${dim("description")}`, `  ${dim("hooks/")}`, `  ${dim("info/")}`);
+  }
+  lines.push("  objects/");
+  if (detail === "full") lines.push(`    ${dim("info/")}`, `    ${dim("pack/")}`);
   if (!store.objects.size) lines.push(`    ${dim(escapeHtml(labels.objEmpty))}`);
   for (const [id, object] of store.objects) {
     const body = `${id.slice(0, 2)}/${id.slice(2, 8)}...  <span class="cl-ob-type">${object.type}</span>`;
@@ -78,7 +87,14 @@ function folderHtml(replay: Replay, labels: VizLabels): string {
   for (const [name, id] of store.refs) {
     lines.push(`    ${escapeHtml(name.replace(/^refs\/heads\//, ""))}   ${dim(short(id))}`);
   }
-  lines.push(`  HEAD    ${dim(`-> ${store.head.kind === "ref" ? store.head.ref : short(store.head.id)}`)}`);
+  if (detail === "full") lines.push(`  ${dim("refs/tags/")}`);
+  // HEAD is a text file holding one line, and that line is what it says here.
+  // Drawing an arrow instead would be a rendering of the truth rather than the
+  // truth, and this track's whole promise is that these are ordinary files.
+  const headLine = store.head.kind === "ref"
+    ? `ref: ${store.head.ref}`
+    : short(store.head.id);
+  lines.push(`  HEAD    ${dim(escapeHtml(headLine))}`);
   if (store.index.size) {
     lines.push("  index");
     for (const [path, id] of store.index) {

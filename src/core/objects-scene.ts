@@ -46,6 +46,11 @@ export interface ObjectsScene {
   /** How many trailing acts are NEW at this step. Objects those acts create are
    *  highlighted. Defaults to 1; use 0 for a step that only re-explains. */
   fresh?: number;
+  /** `full` draws everything `git init` really creates - config, description,
+   *  hooks, info - not just the parts a lesson is about. Worth it exactly once,
+   *  in the lesson that opens the folder: a learner who looks inside a real
+   *  `.git` should not find things nobody warned them about. Defaults to `core`. */
+  detail?: "core" | "full";
   /** A short caption under the picture. */
   note?: string;
   /** Fixed so ids are deterministic - a lesson can quote one in its prose. */
@@ -56,6 +61,7 @@ export interface ResolvedObjectsScene {
   lens: ObjectLens;
   acts: ObjectAct[];
   fresh: ObjectAct[];
+  detail: "core" | "full";
   note?: string;
   author: string;
 }
@@ -73,6 +79,7 @@ export function resolveObjects(scene: ObjectsScene | undefined): ResolvedObjects
     lens: scene.lens === "chain" || scene.lens === "both" ? scene.lens : "folder",
     acts,
     fresh: want === 0 ? [] : acts.slice(acts.length - want),
+    detail: scene.detail === "full" ? "full" : "core",
     note: scene.note,
     author: scene.author || DEFAULT_AUTHOR,
   };
