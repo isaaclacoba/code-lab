@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import "./setup-dom.ts";
 import { ObjectsView } from "../src/dom/objects-view.ts";
+import { DEFAULT_VIZ_LABELS } from "../src/core/memory-model.ts";
 import type { ObjectAct, ObjectsScene } from "../src/core/objects-scene.ts";
 import type { SyncCtx } from "../src/dom/panel.ts";
 
@@ -109,4 +110,32 @@ test("a step with no scene leaves the panel alone instead of throwing", () => {
   const view = new ObjectsView();
   assert.doesNotThrow(() => view.sync({ model: {} } as unknown as SyncCtx));
   assert.equal(view.el.querySelector(".cl-ob-row"), null);
+});
+
+// The picture speaks English of its own - "(empty)", "your folder", "names". A
+// lesson file cannot reach those strings, so without this surface a Spanish
+// learner reads Spanish narration beside an English picture.
+test("the widget's own words come from labels, not from the source", () => {
+  const es = { ...DEFAULT_VIZ_LABELS, objEmpty: "(vacio)", objNoNames: "(sin nombres)",
+    objYourFolder: "tu carpeta", objUnnamed: "sin nombre", objNames: "nombra" };
+  const view = new ObjectsView(es);
+  view.sync({ model: { objects: {
+    lens: "both",
+    acts: [...SAVE, { act: "write", path: "hello.txt", text: "goodbye\n" }, { act: "store", path: "hello.txt" }],
+  } } } as unknown as SyncCtx);
+  const text = view.el.textContent!;
+  assert.match(text, /tu carpeta/);
+  assert.match(text, /nombra/);
+  assert.match(text, /sin nombre/);
+  assert.doesNotMatch(text, /your folder|\bnames\b/);
+  // git's own vocabulary is NOT translated - the learner meets these verbatim.
+  assert.match(text, /commit/);
+  assert.match(text, /blob/);
+});
+
+test("an empty repository reports empty in the reading language", () => {
+  const view = new ObjectsView({ ...DEFAULT_VIZ_LABELS, objEmpty: "(vacio)", objNoNames: "(sin nombres)" });
+  view.sync({ model: { objects: { lens: "folder", acts: [] } } } as unknown as SyncCtx);
+  assert.match(view.el.querySelector(".cl-ob-folder")!.textContent!, /\(vacio\)/);
+  assert.match(view.el.querySelector(".cl-ob-folder")!.textContent!, /\(sin nombres\)/);
 });

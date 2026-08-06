@@ -170,7 +170,7 @@ test("chain rows mark what no name reaches", () => {
   const rows = chainRows(replay);
   const orphans = rows.filter((r) => r.unreachable);
   assert.equal(orphans.length, 1);
-  assert.equal(orphans[0].label, "blob (unnamed)");
+  assert.equal(orphans[0].label, "blob", "the label is git's own word; 'unnamed' is the view's chrome");
 });
 
 test("a commit chain shows the parent as its own row, never nested", () => {
@@ -225,6 +225,6 @@ test("an unnamed tree still shows what it holds", () => {
     { act: "write", path: "a.txt", text: "two\n" },
     { act: "store", path: "a.txt" }, { act: "list" },
   ]);
-  const orphanTree = chainRows(replay).find((r) => r.label === "tree (unnamed)")!;
+  const orphanTree = chainRows(replay).find((r) => r.unreachable && r.kind === "tree")!;
   assert.ok(orphanTree.body!.includes("a.txt -> "), "an empty row teaches nothing");
 });

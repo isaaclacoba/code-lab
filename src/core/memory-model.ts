@@ -274,6 +274,16 @@ export interface VizLabels {
   toolResult: string;
   /** AgentView fan caption - the next-token probability panel's heading. */
   fanCaption: string;
+  /** ObjectsView chrome. The type words `blob`, `tree` and `commit` are NOT here:
+   *  they are git's own vocabulary and the learner will meet them verbatim in
+   *  real git output, so translating them would teach the wrong word. These are
+   *  the surrounding English the picture speaks in. */
+  objEmpty: string;
+  objNoNames: string;
+  objYourFolder: string;
+  objNothingYet: string;
+  objUnnamed: string;
+  objNames: string;
 }
 
 /** English defaults for every VizLabels string. A widget built with no `labels`
@@ -300,6 +310,12 @@ export const DEFAULT_VIZ_LABELS: VizLabels = {
   toolError: "\u2190 error",
   toolResult: "\u2190 result",
   fanCaption: "Probability of the next token",
+  objEmpty: "(empty)",
+  objNoNames: "(no names yet)",
+  objYourFolder: "your folder",
+  objNothingYet: "Nothing points at anything yet.",
+  objUnnamed: "unnamed",
+  objNames: "names",
 };
 
 export interface MemoryVizConfig {

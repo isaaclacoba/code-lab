@@ -225,7 +225,9 @@ export function chainRows(replay: Replay): ChainRow[] {
 
   for (const [id, object] of store.objects) {
     if (rows.some((row) => row.id === id)) continue;
-    push(object.type, `${object.type} (unnamed)`, id,
+    // The label stays the bare type word. "unnamed" is chrome the view adds from
+    // its labels, because that word translates and `blob` does not.
+    push(object.type, object.type, id,
       object.entries ? treeBodyText(object.entries) : object.text || object.commit?.message);
   }
   return rows;

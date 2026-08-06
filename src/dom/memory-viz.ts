@@ -103,7 +103,7 @@ export class MemoryViz {
     retrieval: () => new RetrievalView(),
     planboard: () => new PlanboardView(),
     repo: () => new RepoView(),
-    objects: () => new ObjectsView(),
+    objects: (_spec, ctx) => new ObjectsView(ctx.vizLabels),
     controls: (_spec, ctx) =>
       (this.controls = new VizControls(ctx.actions, ctx.handlers, ctx.nextHref, ctx.legend, ctx.nextLabel, ctx.vizLabels)),
   };

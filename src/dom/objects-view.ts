@@ -14,6 +14,8 @@
 // too, and would say a commit CONTAINS its parent - the one thing it does not do.
 import type { Panel, SyncCtx } from "./panel.js";
 import { escapeHtml } from "../core/narration.js";
+import { DEFAULT_VIZ_LABELS } from "../core/memory-model.js";
+import type { VizLabels } from "../core/memory-model.js";
 import {
   chainRows,
   replayObjects,
@@ -28,8 +30,10 @@ export class ObjectsView implements Panel {
   private readonly folderEl: HTMLElement;
   private readonly chainEl: HTMLElement;
   private readonly noteEl: HTMLElement;
+  private readonly labels: VizLabels;
 
-  constructor() {
+  constructor(labels: VizLabels = DEFAULT_VIZ_LABELS) {
+    this.labels = labels;
     this.el = document.createElement("div");
     this.el.className = "cl-ob";
     this.folderEl = document.createElement("pre");
@@ -51,8 +55,8 @@ export class ObjectsView implements Panel {
     const wantsChain = scene.lens === "chain" || scene.lens === "both";
     this.folderEl.hidden = !wantsFolder;
     this.chainEl.hidden = !wantsChain;
-    if (wantsFolder) this.folderEl.innerHTML = folderHtml(replay);
-    if (wantsChain) this.chainEl.innerHTML = chainHtml(chainRows(replay));
+    if (wantsFolder) this.folderEl.innerHTML = folderHtml(replay, this.labels);
+    if (wantsChain) this.chainEl.innerHTML = chainHtml(chainRows(replay), this.labels);
 
     this.noteEl.innerHTML = scene.note ? escapeHtml(scene.note) : "";
     this.noteEl.hidden = !scene.note;
@@ -61,16 +65,16 @@ export class ObjectsView implements Panel {
 
 /** The folder listing. Object ids are split the way git splits them on disk -
  *  two characters of directory, the rest of the name inside it. */
-function folderHtml(replay: Replay): string {
+function folderHtml(replay: Replay, labels: VizLabels): string {
   const { store, added } = replay;
   const lines: string[] = [".git/", "  objects/"];
-  if (!store.objects.size) lines.push(`    ${dim("(empty)")}`);
+  if (!store.objects.size) lines.push(`    ${dim(escapeHtml(labels.objEmpty))}`);
   for (const [id, object] of store.objects) {
     const body = `${id.slice(0, 2)}/${id.slice(2, 8)}...  <span class="cl-ob-type">${object.type}</span>`;
     lines.push(`    ${added.has(id) ? `<span class="cl-ob-new">${body}</span>` : body}`);
   }
   lines.push("  refs/heads/");
-  if (!store.refs.size) lines.push(`    ${dim("(no names yet)")}`);
+  if (!store.refs.size) lines.push(`    ${dim(escapeHtml(labels.objNoNames))}`);
   for (const [name, id] of store.refs) {
     lines.push(`    ${escapeHtml(name.replace(/^refs\/heads\//, ""))}   ${dim(short(id))}`);
   }
@@ -82,7 +86,7 @@ function folderHtml(replay: Replay): string {
     }
   }
   if (store.worktree.size) {
-    lines.push("", "your folder");
+    lines.push("", escapeHtml(labels.objYourFolder));
     for (const [path] of store.worktree) lines.push(`  ${escapeHtml(path)}`);
   }
   return lines.join("\n");
@@ -95,8 +99,8 @@ function dim(text: string): string {
 /** One row per object, each saying what it names. The `names` chip repeats the
  *  next row's id verbatim so a learner can follow it by eye rather than by
  *  trusting a line. */
-function chainHtml(rows: ChainRow[]): string {
-  if (!rows.length) return `<p class="cl-ob-empty">Nothing points at anything yet.</p>`;
+function chainHtml(rows: ChainRow[], labels: VizLabels): string {
+  if (!rows.length) return `<p class="cl-ob-empty">${escapeHtml(labels.objNothingYet)}</p>`;
   return rows
     .map((row) => {
       if (row.kind === "ref") {
@@ -105,12 +109,17 @@ function chainHtml(rows: ChainRow[]): string {
       const classes = ["cl-ob-row"];
       if (row.fresh) classes.push("cl-ob-fresh");
       if (row.unreachable) classes.push("cl-ob-orphan");
+      // `blob`, `tree` and `commit` stay git's own words - the learner will meet
+      // them verbatim in real git output. Only the qualifier around them moves.
+      const kind = row.unreachable
+        ? `${escapeHtml(row.label)} (${escapeHtml(labels.objUnnamed)})`
+        : escapeHtml(row.label);
       const names = row.names.length
-        ? ` names ${row.names.map((id) => `<span class="cl-ob-names">${short(id)}</span>`).join(" ")}`
+        ? ` ${escapeHtml(labels.objNames)} ${row.names.map((id) => `<span class="cl-ob-names">${short(id)}</span>`).join(" ")}`
         : "";
       return (
         `<div class="${classes.join(" ")}">` +
-        `<span class="cl-ob-kind">${escapeHtml(row.label)}</span>` +
+        `<span class="cl-ob-kind">${kind}</span>` +
         `<span class="cl-ob-id">${short(row.id)}</span>` +
         `<span class="cl-ob-body">${escapeHtml(row.body || "")}${names}</span>` +
         `</div>`
