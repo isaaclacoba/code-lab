@@ -12,11 +12,13 @@
 // plain JSON, so they clone, localize and validate like every other scene, and a
 // lesson file needs nothing loaded before it.
 import {
+  MODE_DIR,
   MODE_FILE,
   ObjectStore,
   type CommitFields,
   type ObjectId,
   type StoredObject,
+  type TreeEntry,
 } from "./git-objects.js";
 
 /** Which picture this step draws. `folder` is the files on disk, `chain` is who
@@ -146,9 +148,7 @@ export function replayObjects(scene: ResolvedObjectsScene): Replay {
       }
       case "list": {
         if (!stored.size) break;
-        latestTree = store.writeTree(
-          [...stored].map(([name, id]) => ({ mode: MODE_FILE, name, id })),
-        );
+        latestTree = writeNested(store, stored);
         break;
       }
       case "save": {
@@ -240,13 +240,18 @@ export function chainRows(replay: Replay): ChainRow[] {
   }
 
   const treeId = top ? store.objects.get(top)!.commit!.tree : lastTreeOf(store);
-  const tree = treeId ? store.objects.get(treeId) : undefined;
-  if (tree?.entries) {
-    push("tree", "tree", treeId!, treeBodyText(tree.entries));
-    for (const entry of tree.entries) {
-      push("blob", "blob", entry.id, store.objects.get(entry.id)?.text);
+  // Walk the tree the way it is actually shaped. An entry may be another tree -
+  // that is a subdirectory - so this recurses rather than assuming a flat list.
+  const walkTree = (id: ObjectId | null): void => {
+    const node = id ? store.objects.get(id) : undefined;
+    if (!node?.entries) return;
+    push("tree", "tree", id!, treeBodyText(node.entries));
+    for (const entry of node.entries) {
+      if (store.objects.get(entry.id)?.entries) walkTree(entry.id);
+      else push("blob", "blob", entry.id, store.objects.get(entry.id)?.text);
     }
-  }
+  };
+  walkTree(treeId);
 
   for (const [id, object] of store.objects) {
     if (rows.some((row) => row.id === id)) continue;
@@ -258,8 +263,32 @@ export function chainRows(replay: Replay): ChainRow[] {
   return rows;
 }
 
-function treeBodyText(entries: { name: string; id: ObjectId }[]): string {
-  return entries.map((entry) => `${entry.name} -> ${short(entry.id)}`).join(", ");
+/** Git writes ONE tree object per directory, so a stored path containing a
+ *  slash means a subtree. Built deepest-first, because a parent's row carries
+ *  the child's id and that id does not exist until the child is written. */
+function writeNested(store: ObjectStore, stored: Map<string, ObjectId>): ObjectId {
+  const build = (prefix: string): ObjectId => {
+    const entries: TreeEntry[] = [];
+    const dirs = new Set<string>();
+    for (const [path, id] of stored) {
+      if (!path.startsWith(prefix)) continue;
+      const rest = path.slice(prefix.length);
+      const slash = rest.indexOf("/");
+      if (slash < 0) entries.push({ mode: MODE_FILE, name: rest, id });
+      else dirs.add(rest.slice(0, slash));
+    }
+    for (const dir of dirs) {
+      entries.push({ mode: MODE_DIR, name: dir, id: build(`${prefix}${dir}/`) });
+    }
+    return store.writeTree(entries);
+  };
+  return build("");
+}
+
+function treeBodyText(entries: TreeEntry[]): string {
+  return entries
+    .map((entry) => `${entry.mode.padStart(6, "0")} ${entry.name} -> ${short(entry.id)}`)
+    .join("   ");
 }
 
 /** With nothing committed yet there is still a picture worth drawing: the most
@@ -289,10 +318,24 @@ export function openObject(
   }
   if (!found) return null;
   if (found.entries) {
+    const kindOf = (id: ObjectId) =>
+      replay.store.objects.get(id)?.entries ? "tree" : "blob";
+    if (!raw) {
+      // What `git cat-file -p` prints: the mode padded to six digits, the type
+      // word, the id in hex, then the name.
+      return {
+        id: found.id, type,
+        text: found.entries
+          .map((e) => `${e.mode.padStart(6, "0")} ${kindOf(e.id)} ${e.id}\t${e.name}`)
+          .join("\n"),
+      };
+    }
+    // What is actually STORED: no padding, no type word, and the id as twenty
+    // raw bytes rather than forty hex characters. `cat-file -p` is a prettifier.
     return {
       id: found.id, type,
       text: found.entries
-        .map((e) => `${e.mode} blob ${e.id}\t${e.name}`)
+        .map((e) => `${e.mode} ${e.name}\\0<20 raw bytes: ${short(e.id)}...>`)
         .join("\n"),
     };
   }

@@ -246,3 +246,27 @@ test("openRaw shows the exact bytes git hashes, header included", () => {
   // The id is the hash of exactly those bytes - proved against real git.
   assert.equal(raw!.id, "3b18e512dba79e4c8300dd08aeb37f8e728b8dad");
 });
+
+test("a path with a slash builds a real subtree - ids match git", () => {
+  const replay = replayObjects(
+    resolveObjects({
+      acts: [
+        { act: "write", path: "notes.md", text: "hello world\n" },
+        { act: "store", path: "notes.md" },
+        { act: "write", path: "docs/guide.md", text: "read me\n" },
+        { act: "store", path: "docs/guide.md" },
+        { act: "list" },
+      ],
+    })!,
+  );
+  const ids = [...replay.store.objects.values()].map((o) => `${o.type} ${o.id}`);
+  // Every one of these came out of real git 2.34.1 on the same two files.
+  assert.deepEqual(ids.sort(), [
+    "blob 3b18e512dba79e4c8300dd08aeb37f8e728b8dad", // notes.md
+    "blob d9b401251bb36c51ca5c56c2ffc8a24a78ff20ae", // docs/guide.md
+    "tree 6e5cb5bf4fb518d4d56f1639d9dfca12ad228aed", // the top tree
+    "tree af5e9eaee94e434a05e5e461f8d102b42da42834", // the docs tree
+  ].sort());
+  // git writes ONE tree object per directory, so two directories means two.
+  assert.equal(ids.filter((s) => s.startsWith("tree")).length, 2);
+});
