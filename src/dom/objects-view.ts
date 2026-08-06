@@ -62,7 +62,7 @@ export class ObjectsView implements Panel {
     if (wantsFolder) this.folderEl.innerHTML = folderHtml(replay, this.labels, scene.detail);
     if (wantsChain) this.chainEl.innerHTML = chainHtml(chainRows(replay), this.labels);
 
-    const opened = scene.open ? openObject(replay, scene.open) : null;
+    const opened = scene.open ? openObject(replay, scene.open, scene.openRaw) : null;
     this.openEl.hidden = !opened;
     if (opened) {
       this.openEl.innerHTML =

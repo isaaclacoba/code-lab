@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_AUTHOR,
   chainRows,
+  openObject,
   replayObjects,
   resolveObjects,
   short,
@@ -227,4 +228,21 @@ test("an unnamed tree still shows what it holds", () => {
   ]);
   const orphanTree = chainRows(replay).find((r) => r.unreachable && r.kind === "tree")!;
   assert.ok(orphanTree.body!.includes("a.txt -> "), "an empty row teaches nothing");
+});
+
+test("openRaw shows the exact bytes git hashes, header included", () => {
+  const replay = replayObjects(
+    resolveObjects({
+      acts: [
+        { act: "write", path: "notes.md", text: "hello world\n" },
+        { act: "store", path: "notes.md" },
+      ],
+    })!,
+  );
+  const plain = openObject(replay, "blob");
+  const raw = openObject(replay, "blob", true);
+  assert.equal(plain!.text, "hello world\n");
+  assert.equal(raw!.text, "blob 12\\0hello world\n");
+  // The id is the hash of exactly those bytes - proved against real git.
+  assert.equal(raw!.id, "3b18e512dba79e4c8300dd08aeb37f8e728b8dad");
 });

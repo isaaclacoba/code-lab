@@ -57,6 +57,10 @@ export interface ObjectsScene {
    *  paraphrasing them in narration would be describing the thing instead of
    *  showing it. */
   open?: "blob" | "tree" | "commit";
+  /** Show the EXACT bytes git hashes - the `blob 12\0` header included -
+   *  rather than just the payload. The header is invisible in normal git
+   *  output, so a lesson about it has no other way to put it on screen. */
+  openRaw?: boolean;
   /** A short caption under the picture. */
   note?: string;
   /** Fixed so ids are deterministic - a lesson can quote one in its prose. */
@@ -69,6 +73,10 @@ export interface ResolvedObjectsScene {
   fresh: ObjectAct[];
   detail: "core" | "full";
   open?: "blob" | "tree" | "commit";
+  /** Show the EXACT bytes git hashes - the `blob 12\0` header included -
+   *  rather than just the payload. The header is invisible in normal git
+   *  output, so a lesson about it has no other way to put it on screen. */
+  openRaw?: boolean;
   note?: string;
   author: string;
 }
@@ -89,6 +97,7 @@ export function resolveObjects(scene: ObjectsScene | undefined): ResolvedObjects
     fresh: want === 0 ? [] : acts.slice(acts.length - want),
     detail: scene.detail === "full" ? "full" : "core",
     open: OPENABLE.includes(scene.open as never) ? scene.open : undefined,
+    openRaw: scene.openRaw === true,
     note: scene.note,
     author: scene.author || DEFAULT_AUTHOR,
   };
@@ -272,6 +281,7 @@ export function short(id: ObjectId): string {
 export function openObject(
   replay: Replay,
   type: "blob" | "tree" | "commit",
+  raw = false,
 ): { id: ObjectId; type: string; text: string } | null {
   let found: StoredObject | null = null;
   for (const object of replay.store.objects.values()) {
@@ -286,5 +296,11 @@ export function openObject(
         .join("\n"),
     };
   }
-  return { id: found.id, type, text: new TextDecoder().decode(found.body) };
+  const body = new TextDecoder().decode(found.body);
+  // The NUL that separates header from content prints as nothing, so it is
+  // written the way a learner would type it into `printf`.
+  return {
+    id: found.id, type,
+    text: raw ? `${type} ${found.body.length}\\0${body}` : body,
+  };
 }

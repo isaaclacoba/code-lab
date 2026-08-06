@@ -74,7 +74,7 @@ test("an object no name reaches is drawn, and drawn differently", () => {
   });
   const orphans = view.el.querySelectorAll(".cl-ob-orphan");
   assert.equal(orphans.length, 1);
-  assert.match(orphans[0].textContent!, /unnamed/);
+  assert.match(orphans[0].textContent!, /nothing points here/);
 });
 
 test("objects created by this step's fresh acts are marked in the folder", () => {
@@ -215,4 +215,20 @@ test("opening a tree shows it the way git cat-file does", () => {
   const view = render({ lens: "chain", open: "tree", acts: SAVE });
   assert.match(view.el.querySelector(".cl-ob-open")!.textContent!,
     /100644 blob 3b18e512dba79e4c8300dd08aeb37f8e728b8dad\thello\.txt/);
+});
+
+test("openRaw puts the real hashed bytes on screen, header and all", () => {
+  const acts: ObjectAct[] = [
+    { act: "write", path: "notes.md", text: "hello world\n" },
+    { act: "store", path: "notes.md" },
+  ];
+  const plain = render({ lens: "chain", acts, open: "blob" });
+  const raw = render({ lens: "chain", acts, open: "blob", openRaw: true });
+  const textOf = (v: ObjectsView) =>
+    v.el.querySelector(".cl-ob-open")!.textContent!;
+
+  assert.ok(!textOf(plain).includes("blob 12"), "payload view must stay payload");
+  // The exact bytes real git hashes to 3b18e512... - the whole point of the
+  // lesson, so it has to survive the view and not just the resolver.
+  assert.match(textOf(raw), /blob 12\\0hello world/);
 });
