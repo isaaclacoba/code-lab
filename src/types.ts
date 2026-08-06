@@ -48,6 +48,14 @@ export interface EditorMountOptions {
    * a fixed host height. Heights are in pixels and clamped to the given bounds.
    */
   autoHeight?: { minHeight?: number; maxHeight?: number };
+  /**
+   * Wrap long lines instead of scrolling sideways. Off by default, because a
+   * code editor wants a stable column: wrapping C# makes the indentation lie.
+   * Turn it on where the buffer is prose-ish and narrow - a conflicted file in
+   * the git track, where a learner would otherwise have to scroll right to read
+   * a conflict marker they are supposed to be editing.
+   */
+  wordWrap?: boolean;
 }
 
 /** A pluggable editor surface: read-only view, textarea, or Monaco. */

@@ -66,6 +66,7 @@ export class MonacoEditor implements EditorAdapter {
       tabSize: 4,
       insertSpaces: true,
       scrollBeyondLastLine: false,
+      wordWrap: opts.wordWrap ? "on" : "off",
       bracketPairColorization: { enabled: true },
       // Breathing room so the first and last lines are not welded to the frame.
       // This is Monaco's OWN padding, not CSS on the host: `getContentHeight`

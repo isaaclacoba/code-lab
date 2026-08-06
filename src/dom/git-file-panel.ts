@@ -211,7 +211,18 @@ export class GitFilePanel {
     const editor = new MonacoEditor();
     this.editor = editor;
     void loadMonaco()
-      .then(() => editor.mount(host, { value: text, language: "plaintext", readOnly: false }))
+      // Wrap: this panel is narrow (it shares a card with the graph and the
+      // terminal) and the buffer is prose with conflict markers, not code. A
+      // learner should never have to scroll sideways to read the line they are
+      // being asked to fix.
+      .then(() =>
+        editor.mount(host, {
+          value: text,
+          language: "plaintext",
+          readOnly: false,
+          wordWrap: true,
+        }),
+      )
       .catch(() => {
         // No Monaco (offline, blocked CDN) must not mean no way to resolve: the
         // three buttons above still work, and they are enough to finish.

@@ -1237,6 +1237,17 @@
 }
 
 /* --- graph --- */
+/* The graph grows sideways forever; the viewport keeps it inside its column and
+   scrolls instead. `min-width: 0` is what lets it: `.cl-git` is a grid, and a
+   grid item's automatic minimum size would otherwise stretch the whole widget
+   to the graph's width and push it out of the card. */
+.cl-git .cl-git-viewport {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
 .cl-git .cl-git-graph { position: relative; }
 .cl-git .cl-git-svg { display: block; overflow: visible; }
 .cl-git .cl-git-edge { stroke-width: 2.5; fill: none; }

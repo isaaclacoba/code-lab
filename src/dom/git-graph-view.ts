@@ -98,6 +98,7 @@ import { GitFilePanel } from "./git-file-panel.js";
 
 export class GitGraph {
   private root!: HTMLElement;
+  private graphViewport!: HTMLElement;
   private graphWrap!: HTMLElement;
   private svg!: SVGSVGElement;
   private chipLayer!: HTMLElement;
@@ -142,8 +143,18 @@ export class GitGraph {
     this.headEl.hidden = true;
 
     this.graphWrap.append(this.svg, this.chipLayer, this.headEl);
+
+    // The graph is 128px wider per commit and never wraps, so a long history
+    // outgrows whatever column it is mounted in. `graphWrap` is sized in JS to
+    // the exact graph box (the chip overlay is positioned against it), so it can
+    // never scroll itself - it needs a viewport around it that stays column-width.
+    // Only the graph scrolls: the zones and the file panel below stay put.
+    this.graphViewport = document.createElement("div");
+    this.graphViewport.className = "cl-git-viewport";
+    this.graphViewport.append(this.graphWrap);
+
     this.filePanel = new GitFilePanel();
-    this.root.append(this.graphWrap, this.buildWorkArea(), this.filePanel.el);
+    this.root.append(this.graphViewport, this.buildWorkArea(), this.filePanel.el);
 
     this.root.addEventListener("click", this.onClick);
     host.appendChild(this.root);
