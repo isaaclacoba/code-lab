@@ -152,8 +152,9 @@ test("chain rows read from the name down to the content", () => {
   const rows = chainRows(replay);
   assert.deepEqual(rows.map((r) => r.kind), ["ref", "commit", "tree", "blob"]);
   assert.equal(rows[0].label, "main");
-  assert.equal(rows[1].names, rows[2].id, "the commit names the tree");
-  assert.equal(rows[2].names, undefined, "the tree already shows the blob id in its body");
+  assert.deepEqual(rows[1].names, [rows[2].id], "the commit names the tree");
+  assert.deepEqual(rows[2].names, [], "the tree already shows the blob id in its body");
+  assert.deepEqual(rows[3].names, [], "a blob names nothing at all");
   assert.ok(rows[2].body!.includes(short(rows[3].id)));
   assert.ok(rows.every((r) => !r.unreachable));
 });
@@ -184,5 +185,46 @@ test("a commit chain shows the parent as its own row, never nested", () => {
   const commits = rows.filter((r) => r.kind === "commit");
   assert.equal(commits.length, 2);
   assert.equal(commits[0].body, "two", "newest first");
-  assert.equal(commits[0].names, commits[1].id, "and it NAMES its parent");
+  assert.ok(commits[0].names.includes(commits[1].id), "and it NAMES its parent");
+});
+
+// A row used to name whatever was DRAWN next, which is right by luck with one
+// commit and wrong the moment there are two: the older commit ended up naming
+// the newer commit's tree, and a blob ended up naming another blob.
+test("what a row names comes from the object, not from the row below it", () => {
+  const { replay } = run([
+    { act: "write", path: "a.txt", text: "one\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "one" },
+    { act: "name", ref: "refs/heads/main" },
+    { act: "write", path: "a.txt", text: "two\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "two" },
+    { act: "name", ref: "refs/heads/main" },
+  ]);
+  const rows = chainRows(replay);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  for (const row of rows) {
+    if (row.kind === "blob") assert.deepEqual(row.names, [], "a blob names nothing");
+    for (const named of row.names) {
+      const target = replay.store.objects.get(named)!;
+      const self = replay.store.objects.get(row.id)!;
+      assert.ok(
+        self.commit!.tree === named || self.commit!.parents.includes(named),
+        `${row.label} ${short(row.id)} claims to name ${short(named)}, which it does not`,
+      );
+      assert.ok(target, "and the id it names is a real object");
+      assert.ok(byId.has(named), "which is on screen, so the chip can be followed");
+    }
+  }
+});
+
+test("an unnamed tree still shows what it holds", () => {
+  const { replay } = run([
+    { act: "write", path: "a.txt", text: "one\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "one" },
+    { act: "name", ref: "refs/heads/main" },
+    { act: "write", path: "a.txt", text: "two\n" },
+    { act: "store", path: "a.txt" }, { act: "list" },
+  ]);
+  const orphanTree = chainRows(replay).find((r) => r.label === "tree (unnamed)")!;
+  assert.ok(orphanTree.body!.includes("a.txt -> "), "an empty row teaches nothing");
 });

@@ -58,11 +58,12 @@ test("the chain reads name, commit, tree, blob - one row each", () => {
   assert.deepEqual(kinds, ["commit", "tree", "blob"]);
 });
 
-test("a row's names chip repeats the next row's id verbatim", () => {
+test("a row's names chip repeats the id it names, verbatim", () => {
   const view = render({ lens: "chain", acts: SAVE });
   const rows = Array.from(view.el.querySelectorAll(".cl-ob-row"));
   const chip = rows[0].querySelector(".cl-ob-names")!.textContent;
   assert.equal(chip, rows[1].querySelector(".cl-ob-id")!.textContent);
+  assert.equal(rows[2].querySelector(".cl-ob-names"), null, "a blob names nothing");
 });
 
 test("an object no name reaches is drawn, and drawn differently", () => {
