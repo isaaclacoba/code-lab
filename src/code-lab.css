@@ -1762,6 +1762,22 @@
 .cl-ob-fresh { border-color: #9fd0be; box-shadow: 0 0 0 3px rgba(31, 111, 95, 0.1); }
 .cl-ob-orphan { opacity: 0.55; border-style: dashed; }
 
+/* The opened object's row hands its contents to the raw block underneath, so it
+   takes that block's background - the two read as one thing instead of a row
+   that mysteriously went blank. The caret says "below" without a word in it, so
+   there is nothing here to translate. */
+.cl-ob-open-row { background: #f7f8fb; }
+.cl-ob-open-row::after {
+  content: "";
+  position: absolute;
+  right: 12px; top: 50%;
+  margin-top: -5px;
+  width: 6px; height: 6px;
+  border-right: 2px solid #9aa6b2;
+  border-bottom: 2px solid #9aa6b2;
+  transform: rotate(45deg);
+}
+
 .cl-ob-kind {
   font-family: var(--cl-mono);
   font-size: calc(var(--mv-fs, 1) * 10px);

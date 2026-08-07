@@ -61,10 +61,16 @@ export class ObjectsView implements Panel {
     const wantsChain = scene.lens === "chain" || scene.lens === "both";
     this.folderEl.hidden = !wantsFolder;
     this.chainEl.hidden = !wantsChain;
-    if (wantsFolder) this.folderEl.innerHTML = folderHtml(replay, this.labels, scene.detail);
-    if (wantsChain) this.chainEl.innerHTML = chainHtml(chainRows(replay), this.labels, replay.store);
-
+    // Resolved before the chain is drawn, because the chain needs to know: the
+    // opened object's row goes quiet and lets the raw block speak for it.
     const opened = scene.open ? openObject(replay, scene.open, scene.openRaw) : null;
+
+    if (wantsFolder) this.folderEl.innerHTML = folderHtml(replay, this.labels, scene.detail);
+    if (wantsChain) {
+      const rows = chainRows(replay);
+      this.chainEl.innerHTML = chainHtml(rows, this.labels, replay.store, opened ? opened.id : null);
+    }
+
     this.openEl.hidden = !opened;
     if (opened) {
       const rawHead = opened.header
@@ -212,7 +218,12 @@ function dim(text: string): string {
 /** One row per object, each saying what it names. The `names` chip repeats the
  *  next row's id verbatim so a learner can follow it by eye rather than by
  *  trusting a line. */
-function chainHtml(rows: ChainRow[], labels: VizLabels, store: ObjectStore): string {
+function chainHtml(
+  rows: ChainRow[],
+  labels: VizLabels,
+  store: ObjectStore,
+  openedId: string | null,
+): string {
   if (!rows.length) return `<p class="cl-ob-empty">${escapeHtml(labels.objNothingYet)}</p>`;
   // Which ref does HEAD point to? The HEAD marker sits beside that ref's chip.
   const headRef = store.head.kind === "ref" ? store.head.ref : null;
@@ -237,10 +248,16 @@ function chainHtml(rows: ChainRow[], labels: VizLabels, store: ObjectStore): str
       // means. Repeating it in words on every row said the same thing a third
       // time - and with nothing committed yet, EVERY row is unreachable, so the
       // phrase stacked up and wrapped over the picture it was describing.
+      // When this object is opened below, the block shows its contents in git's
+      // own format - full ids, the literal word `blob`. Listing the same
+      // entries in the row put them on screen twice, close enough to read as a
+      // repeat. The opened row keeps its identity and hands over the contents.
+      const isOpen = openedId !== null && row.id === openedId;
+      if (isOpen) classes.push("cl-ob-open-row");
       const kind = escapeHtml(row.label);
       // `tree` and `parent` are git's own field names and stay untranslated,
       // like `blob`. Without them two ids sit side by side looking identical.
-      const names = row.names.length
+      const names = !isOpen && row.names.length
         ? ` ${escapeHtml(labels.objNames)} ${row.names
             .map(
               (n) =>
@@ -255,7 +272,7 @@ function chainHtml(rows: ChainRow[], labels: VizLabels, store: ObjectStore): str
         `<div class="${classes.join(" ")}"${indent}>` +
         `<span class="cl-ob-kind">${kind}</span>` +
         tintId(row.id, store) +
-        `<span class="cl-ob-body">${escapeHtml(row.body || "")}${names}</span>` +
+        `<span class="cl-ob-body">${escapeHtml(isOpen ? "" : row.body || "")}${names}</span>` +
         `</div>`
       );
     })

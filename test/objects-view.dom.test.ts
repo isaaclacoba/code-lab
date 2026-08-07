@@ -218,6 +218,39 @@ test("opening a tree shows it the way git cat-file does", () => {
     /100644 blob 3b18e512dba79e4c8300dd08aeb37f8e728b8dad\thello\.txt/);
 });
 
+test("the opened object's row stops repeating what the block below lists", () => {
+  const rowFor = (view: ObjectsView, kind: string) =>
+    Array.from(view.el.querySelectorAll(".cl-ob-row")).find(
+      (r) => r.querySelector(".cl-ob-kind")!.textContent === kind,
+    )!;
+
+  // Closed, the tree row lists its entries - that behaviour is untouched.
+  const closed = render({ lens: "chain", acts: SAVE });
+  assert.match(rowFor(closed, "tree").textContent!, /3b18e51/);
+
+  // Opened, the block below lists the same entries in git's own format. Two
+  // copies of one fact sat on screen together, so the row now stays quiet.
+  const open = render({ lens: "chain", open: "tree", acts: SAVE });
+  const treeRow = rowFor(open, "tree");
+  assert.ok(treeRow.classList.contains("cl-ob-open-row"), "the opened row is marked");
+  assert.doesNotMatch(treeRow.textContent!, /3b18e51/, "row no longer repeats the entry");
+  assert.match(open.el.querySelector(".cl-ob-open")!.textContent!, /3b18e51/,
+    "and the entry is still on screen, once");
+
+  // Only the OPENED row goes quiet. Without this, blanking every row would pass.
+  assert.equal(open.el.querySelectorAll(".cl-ob-open-row").length, 1);
+  assert.ok(rowFor(open, "commit").querySelector(".cl-ob-names"),
+    "other rows still name what they point at");
+
+  // A commit is the other path: a tree spells its entries out in `body`, but a
+  // commit's tree and parent ids arrive as `names`. Both have to go quiet.
+  const openCommit = render({ lens: "chain", open: "commit", acts: SAVE });
+  assert.equal(rowFor(openCommit, "commit").querySelector(".cl-ob-names"), null,
+    "the opened commit row hands its tree and parent ids to the block");
+  assert.match(openCommit.el.querySelector(".cl-ob-open")!.textContent!, /^tree /m,
+    "which lists them in full");
+});
+
 test("openRaw puts the real hashed bytes on screen, header and all", () => {
   const acts: ObjectAct[] = [
     { act: "write", path: "notes.md", text: "hello world\n" },
