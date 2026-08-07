@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import "./setup-dom.ts";
 import { HeapCardsView } from "../src/dom/heapcards-view.ts";
 import { ConsoleView } from "../src/dom/console-view.ts";
-import { DEFAULT_VIZ_LABELS } from "../src/core/memory-model.ts";
+import { DEFAULT_VIZ_LABELS, deriveRefs } from "../src/core/memory-model.ts";
 import type { ResolvedModel, VizLabels } from "../src/core/memory-model.ts";
 import { placeholdersOf } from "../src/core/template.ts";
 import type { SyncCtx } from "../src/dom/panel.ts";
@@ -143,4 +143,23 @@ test("a partial label set keeps English for the keys it omits", () => {
   const html = heapHtml({ ...DEFAULT_VIZ_LABELS, hpMemory: "MEMORIA" });
   assert.ok(html.includes("MEMORIA"), html);
   assert.ok(html.includes("entry point"), html);
+});
+
+test("a `this` row's dot is the one the derived arrow starts from", () => {
+  // The row draws an arrow glyph and a dot. If the ref list names a different
+  // id, the dot is an arrow pointing at nothing - which looks like a bug in the
+  // picture rather than a mismatch between two files. Deriving both from
+  // `thisDotId` is what keeps them together; this is the test that says so.
+  const html = heapHtml();
+  const refs = deriveRefs(MODEL.stack);
+  const thisRef = refs.find((r) => r.from.endsWith(":this"));
+  assert.ok(thisRef, "no arrow was derived for the frame that has a receiver");
+  assert.equal(thisRef.to, "o1");
+  assert.ok(html.includes(`data-dot="${thisRef.from}"`), html);
+});
+
+test("a frame with no receiver id keeps the prose line, so an old trace does not regress", () => {
+  const html = heapHtml();
+  assert.ok(html.includes("on Cat #1"), "the fallback line is gone");
+  assert.equal(deriveRefs(MODEL.stack).filter((r) => r.from.endsWith(":this")).length, 1);
 });
