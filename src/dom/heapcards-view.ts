@@ -22,7 +22,9 @@ import type {
   ResolvedModel,
   Slot,
 } from "../core/memory-model.js";
-import { slotKind } from "../core/memory-model.js";
+import { DEFAULT_VIZ_LABELS, slotKind } from "../core/memory-model.js";
+import type { VizLabels } from "../core/memory-model.js";
+import { fill } from "../core/template.js";
 import { reconcile } from "./reconcile.js";
 import { svgEl } from "./svg.js";
 
@@ -41,12 +43,15 @@ export class HeapCardsView implements Panel {
   // Bumped each render; the redraw loop stops once its generation is stale.
   private arrowGen = 0;
 
-  constructor(uid: number) {
+  private readonly labels: VizLabels;
+
+  constructor(uid: number, labels: VizLabels = DEFAULT_VIZ_LABELS) {
+    this.labels = labels;
     this.markerId = `clmv-hp-ah-${uid}`;
     this.el = document.createElement("div");
     this.el.className = "cl-mv-region cl-mv-heapcards";
     this.el.innerHTML =
-      `<span class="cl-mv-tag">MEMORY <span>\u00b7 the call stack on the left, objects on the heap on the right</span></span>` +
+      `<span class="cl-mv-tag">${esc(labels.hpMemory)} <span>\u00b7 ${esc(labels.hpMemoryNote)}</span></span>` +
       `<div class="cl-mv-hp-statics" data-hpstatics></div>` +
       `<div class="cl-mv-hp-cols">` +
       `<div class="cl-mv-hp-roots" data-hproots></div>` +
@@ -71,14 +76,14 @@ export class HeapCardsView implements Panel {
   }
 
   private render(model: ResolvedModel): void {
-    this.statics.innerHTML = staticsHtml(model.globals ?? [], model.rodata ?? []);
+    this.statics.innerHTML = staticsHtml(model.globals ?? [], model.rodata ?? [], this.labels);
 
     // Frames are reconciled in push order (caller first) and shown bottom-up via
     // column-reverse, so the active call is the top card and a freshly pushed
     // frame enters at the top. The last frame is the active one.
     const stack = model.stack ?? [];
     const frames: FrameVM[] = stack.map((f, i) => ({ ...f, active: i === stack.length - 1 }));
-    reconcile(this.roots, frames, frameNode);
+    reconcile(this.roots, frames, (f, existing) => frameNode(f, this.labels, existing));
 
     reconcile(this.objs, (model.heap ?? []).map((o) => ({ ...o })), objNode);
 
@@ -161,10 +166,10 @@ function now(): number {
     : Date.now();
 }
 
-function staticsHtml(globals: GlobalSlot[], rodata: GlobalSlot[]): string {
+function staticsHtml(globals: GlobalSlot[], rodata: GlobalSlot[], labels: VizLabels): string {
   return [
-    globals.length ? staticGroupHtml("STATICS", "values shared across the program", globals, true) : "",
-    rodata.length ? staticGroupHtml("CONSTANTS", "fixed at compile time", rodata, false) : "",
+    globals.length ? staticGroupHtml(labels.hpStatics, labels.hpStaticsNote, globals, true) : "",
+    rodata.length ? staticGroupHtml(labels.hpConstants, labels.hpConstantsNote, rodata, false) : "",
   ].join("");
 }
 
@@ -190,26 +195,28 @@ function staticRowHtml(slot: GlobalSlot, allowHot: boolean): string {
 
 // A plain-language label for the kind of call a frame is, so it reads as what it
 // is rather than just a bare name.
-function kindLabel(kind?: string): string {
+function kindLabel(kind: string | undefined, labels: VizLabels): string {
   switch (kind) {
-    case "entry": return "entry point";
-    case "static": return "static method";
-    case "method": return "instance method";
-    case "ctor": return "constructor";
+    case "entry": return labels.hpKindEntry;
+    case "static": return labels.hpKindStatic;
+    case "method": return labels.hpKindMethod;
+    case "ctor": return labels.hpKindCtor;
     default: return "";
   }
 }
 
-function frameNode(f: FrameVM, existing?: HTMLElement): HTMLElement {
+function frameNode(f: FrameVM, labels: VizLabels, existing?: HTMLElement): HTMLElement {
   const el = existing ?? document.createElement("div");
   el.className = "cl-mv-hp-frame" + (f.active ? " is-active" : " is-caller");
-  const label = kindLabel(f.kind);
+  const label = kindLabel(f.kind, labels);
   const badge = label ? `<span class="cl-mv-hp-fkind">${esc(label)}</span>` : "";
-  const recv = f.recv ? `<div class="cl-mv-hp-frecv">on ${esc(f.recv)}</div>` : "";
+  const recv = f.recv
+    ? `<div class="cl-mv-hp-frecv">${esc(fill(labels.hpOn, { recv: f.recv }))}</div>`
+    : "";
   // A caller is paused on the line that made the call; the active frame's line is
   // already lit in the editor, so only callers show it here.
   const paused = !f.active && typeof f.line === "number"
-    ? `<div class="cl-mv-hp-fpaused">paused at line ${f.line}</div>`
+    ? `<div class="cl-mv-hp-fpaused">${esc(fill(labels.hpPaused, { line: f.line }))}</div>`
     : "";
   const rows = (f.vars ?? []).map(rowHtml).join("");
   el.innerHTML =

@@ -6,16 +6,21 @@
 // run AND see the text land in the console, instead of it vanishing.
 
 import type { Panel, SyncCtx } from "./panel.js";
+import { DEFAULT_VIZ_LABELS } from "../core/memory-model.js";
+import type { VizLabels } from "../core/memory-model.js";
 
 export class ConsoleView implements Panel {
   readonly el: HTMLElement;
   private readonly body: HTMLElement;
 
-  constructor() {
+  private readonly labels: VizLabels;
+
+  constructor(labels: VizLabels = DEFAULT_VIZ_LABELS) {
+    this.labels = labels;
     this.el = document.createElement("div");
     this.el.className = "cl-mv-console";
     this.el.innerHTML =
-      `<div class="cl-mv-console-head">Console</div>` +
+      `<div class="cl-mv-console-head">${esc(labels.consoleHead)}</div>` +
       `<pre class="cl-mv-console-body" data-out></pre>`;
     this.body = this.el.querySelector("[data-out]") as HTMLElement;
   }
@@ -24,7 +29,7 @@ export class ConsoleView implements Panel {
     const output = ctx.model.output ?? "";
     const printed = ctx.model.printed ?? "";
     if (output === "") {
-      this.body.innerHTML = `<span class="cl-mv-console-idle">Nothing printed yet.</span>`;
+      this.body.innerHTML = `<span class="cl-mv-console-idle">${esc(this.labels.consoleIdle)}</span>`;
       return;
     }
     // Highlight only the tail this step printed, so the learner's eye follows the

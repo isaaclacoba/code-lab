@@ -6,8 +6,13 @@ import type { ExecTrace } from "../core/exec-tracer-model.js";
 import type { Step } from "../core/memory-model.js";
 import { MemoryViz } from "./memory-viz.js";
 import { renderErrorPanel } from "./error-panel.js";
-import type { LegendItem, PanelSpec, VizLayout } from "../core/memory-model.js";
+import type { LegendItem, PanelSpec, VizLabels, VizLayout } from "../core/memory-model.js";
+import { DEFAULT_VIZ_LABELS } from "../core/memory-model.js";
 import type { CompileError } from "../types.js";
+import { mergeTemplates, fill } from "../core/template.js";
+import { classifyTraceOutcome, tracerFailedOutcome } from "../core/viz-trace-outcome.js";
+import type { VizTraceOutcome } from "../core/viz-trace-outcome.js";
+import type { TraceNarration } from "../core/trace-narration.js";
 
 /** The trace wire reports optional line/friendly as number|string|null; the
  *  shared error panel wants them as number|string|undefined. Normalize once. */
@@ -40,6 +45,22 @@ export interface VizLabConfig {
   legend?: LegendItem[];
   /** Max wait for the host to warm up, in ms. Passed to the runner. */
   readyTimeout?: number;
+  /** Overridable chrome strings for i18n - VizLab's own button and status lines,
+   *  and the labels of the MemoryViz panels it mounts. Any omitted key keeps its
+   *  English default; an override that drops a `{slot}` is refused. */
+  labels?: Partial<VizLabels>;
+  /** Translated templates for the captions the tracer generates per step. Omit
+   *  for English. */
+  narration?: Partial<TraceNarration>;
+  /** Called after every Visualize press with what the run actually did. This is
+   *  the seam a host grades against: the widget shows the trace, and this hands
+   *  out the same trace, so the thing marked is the thing on screen.
+   *
+   *  It fires on EVERY press, including the ones that produced no picture - code
+   *  that did not compile, threw, hit the step budget, or a tracer that never
+   *  loaded - because "did not run" and "ran and was wrong" are different
+   *  verdicts and a grader must be able to tell them apart. */
+  onTrace?: (outcome: VizTraceOutcome) => void;
 }
 
 const DEFAULT_STARTER = [
@@ -76,6 +97,9 @@ export class VizLab {
 
   private legend?: LegendItem[];
   private readonly language: string;
+  private readonly labels: VizLabels;
+  private readonly narration?: Partial<TraceNarration>;
+  private readonly onTrace?: (outcome: VizTraceOutcome) => void;
   private lastTrace: ExecTrace | null = null;
   private lastSteps: Step[] | null = null;
   private viz: MemoryViz | null = null;
@@ -84,6 +108,9 @@ export class VizLab {
   private constructor(host: HTMLElement, config: VizLabConfig) {
     this.legend = config.legend;
     this.language = config.language ?? "csharp";
+    this.labels = mergeTemplates(DEFAULT_VIZ_LABELS, config.labels).merged;
+    this.narration = config.narration;
+    this.onTrace = config.onTrace;
     this.runner = new IframeRunner({
       url: config.runnerUrl,
       readyTimeout: config.readyTimeout ?? 180000,
@@ -101,7 +128,7 @@ export class VizLab {
     this.vizBtn = document.createElement("button");
     this.vizBtn.type = "button";
     this.vizBtn.className = "cl-btn cl-primary cl-vl-run";
-    this.vizBtn.textContent = "Preparing compiler...";
+    this.vizBtn.textContent = this.labels.vlPreparing;
     this.vizBtn.disabled = true;
     this.vizBtn.setAttribute("data-viz", "");
     this.vizBtn.addEventListener("click", () => void this.visualize());
@@ -120,7 +147,7 @@ export class VizLab {
 
     this.stage = document.createElement("div");
     this.stage.className = "cl-vl-stage";
-    this.showHint("Write a small program, then press Visualize to watch it run.");
+    this.showHint(this.labels.vlHint);
 
     this.root.append(editorPane, this.stage);
     host.appendChild(this.root);
@@ -147,7 +174,7 @@ export class VizLab {
     } finally {
       this.ready = true;
       this.vizBtn.disabled = false;
-      this.vizBtn.textContent = "Visualize";
+      this.vizBtn.textContent = this.labels.vlVisualize;
     }
   }
 
@@ -155,40 +182,54 @@ export class VizLab {
     if (!this.ready) return;
     const code = this.editor.getValue();
     this.vizBtn.disabled = true;
-    this.vizBtn.textContent = "Tracing...";
+    this.vizBtn.textContent = this.labels.vlTracing;
     this.setStatus("");
+    // Every path out of here reports exactly once, so a host grading on `onTrace`
+    // never has to guess whether a press it saw start ever finished.
+    let report: VizTraceOutcome | null = null;
     try {
-      const outcome = await this.runner.trace(code);
-      if (!outcome.compiled) {
-        const errors = normalizeErrors(outcome.errors);
+      const result = await this.runner.trace(code);
+      report = classifyTraceOutcome({
+        compiled: result.compiled,
+        trace: result.trace,
+        runtimeError: result.runtimeError,
+        errors: normalizeErrors(result.errors),
+      });
+      if (!result.compiled) {
+        const errors = normalizeErrors(result.errors);
         this.showErrors(errors);
-        this.setStatus("Did not compile.");
+        this.setStatus(this.labels.vlDidNotCompile);
         if (this.editor.setMarkers) this.editor.setMarkers(errors);
         return;
       }
       if (this.editor.setMarkers) this.editor.setMarkers([]);
-      if (!outcome.trace || outcome.trace.steps.length === 0) {
-        this.showHint("That program produced no steps to show. Add a statement or two inside Main.");
-        this.setStatus("Nothing to trace.");
+      if (!result.trace || result.trace.steps.length === 0) {
+        this.showHint(this.labels.vlNoStepsHint);
+        this.setStatus(this.labels.vlNoSteps);
         return;
       }
-      this.lastTrace = outcome.trace;
-      this.lastSteps = traceToSteps(outcome.trace);
+      this.lastTrace = result.trace;
+      this.lastSteps = traceToSteps(result.trace, this.narration);
       this.render();
       // Count the steps the learner will actually click through (the rendered
       // steps less the terminal "finished" beat), so this stays in step with the
       // stepper after redundant call-entry snapshots are collapsed.
       const n = Math.max(0, this.lastSteps.length - 1);
-      let msg = `Traced ${n} step${n === 1 ? "" : "s"}.`;
-      if (outcome.trace.truncated) msg += " Stopped early - the program ran too long.";
-      if (outcome.runtimeError) msg += ` It threw: ${outcome.runtimeError}`;
+      let msg = fill(n === 1 ? this.labels.vlTracedOne : this.labels.vlTracedMany, { n });
+      if (result.trace.truncated) msg += this.labels.vlTruncated;
+      if (result.runtimeError) msg += fill(this.labels.vlThrew, { message: result.runtimeError });
       this.setStatus(msg);
     } catch (err) {
-      this.showHint("The tracer took too long or could not load. Try again.");
-      this.setStatus(String((err as Error).message || err));
+      const message = String((err as Error).message || err);
+      report = tracerFailedOutcome(message);
+      this.showHint(this.labels.vlFailedHint);
+      // The thrown text is developer English from the throw site, so it is shown
+      // only as the detail line under the widget's own translated hint.
+      this.setStatus(message);
     } finally {
       this.vizBtn.disabled = false;
-      this.vizBtn.textContent = "Visualize";
+      this.vizBtn.textContent = this.labels.vlVisualize;
+      if (report) this.onTrace?.(report);
     }
   }
 
@@ -220,6 +261,7 @@ export class VizLab {
       steps: this.lastSteps,
       layout,
       legend: this.legend,
+      labels: this.labels,
       deriveRefs: true,
       autoDim: true,
       onStep: (info) => this.editor.highlightLine?.(info.pc),

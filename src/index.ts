@@ -97,6 +97,15 @@ export type {
   TraceObject,
 } from "./core/exec-tracer-model.js";
 
+export { DEFAULT_TRACE_NARRATION, resolveNarration } from "./core/trace-narration.js";
+export type { TraceNarration } from "./core/trace-narration.js";
+
+export { fill, missingPlaceholders, mergeTemplates, placeholdersOf } from "./core/template.js";
+export type { TemplateIssue } from "./core/template.js";
+
+export { classifyTraceOutcome, tracerFailedOutcome } from "./core/viz-trace-outcome.js";
+export type { VizTraceOutcome, VizTraceStatus, RunnerTraceResult } from "./core/viz-trace-outcome.js";
+
 export type {
   AgentScene,
   AgentToken,

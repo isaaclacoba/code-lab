@@ -244,10 +244,15 @@ export interface LegendItem {
   round?: boolean;
 }
 
-/** Every hardcoded English chrome string the MemoryViz views render: the
- *  transport controls, the font-size control, the transcript author tags and the
- *  tool-rack direction words. Overridable for i18n; any omitted key keeps the
- *  English default. Glyphs (arrows, "Aa", S/M/L) stay in the view, not here. */
+/** Every hardcoded English chrome string the MemoryViz views render - and the
+ *  VizLab surface built on them. Transport controls, the font-size control, the
+ *  transcript author tags, the tool-rack directions, the memory picture's region
+ *  captions and frame badges, the console panel, and VizLab's own button and
+ *  status lines. Overridable for i18n; any omitted key keeps the English default.
+ *  Glyphs (arrows, "Aa", S/M/L) stay in the view, not here.
+ *
+ *  A few values carry `{slot}` placeholders. An override that drops one is
+ *  refused by `mergeTemplates` rather than rendered with the value missing. */
 export interface VizLabels {
   /** VizControls transport buttons + scrubber. */
   prev: string;
@@ -284,6 +289,41 @@ export interface VizLabels {
   objNothingYet: string;
   objUnnamed: string;
   objNames: string;
+  /** HeapCardsView region captions - the MEMORY picture a traced program draws.
+   *  Each tag has a heading and the short note printed after it. */
+  hpMemory: string;
+  hpMemoryNote: string;
+  hpStatics: string;
+  hpStaticsNote: string;
+  hpConstants: string;
+  hpConstantsNote: string;
+  /** HeapCardsView frame badges - what kind of call a frame is, in plain words. */
+  hpKindEntry: string;
+  hpKindStatic: string;
+  hpKindMethod: string;
+  hpKindCtor: string;
+  /** HeapCardsView frame detail lines. Templates: `{recv}` is the object an
+   *  instance call runs on, `{line}` the source line a caller is paused at. */
+  hpOn: string;
+  hpPaused: string;
+  /** ConsoleView - the panel heading and its empty state. */
+  consoleHead: string;
+  consoleIdle: string;
+  /** VizLab's own chrome: the button through its three states, the opening hint,
+   *  and every status line it can write. `{n}` is a step count, `{message}` the
+   *  runtime error text. */
+  vlPreparing: string;
+  vlVisualize: string;
+  vlTracing: string;
+  vlHint: string;
+  vlDidNotCompile: string;
+  vlNoStepsHint: string;
+  vlNoSteps: string;
+  vlTracedOne: string;
+  vlTracedMany: string;
+  vlTruncated: string;
+  vlThrew: string;
+  vlFailedHint: string;
 }
 
 /** English defaults for every VizLabels string. A widget built with no `labels`
@@ -316,6 +356,35 @@ export const DEFAULT_VIZ_LABELS: VizLabels = {
   objNothingYet: "Nothing points at anything yet.",
   objUnnamed: "unnamed",
   objNames: "names",
+  hpMemory: "MEMORY",
+  hpMemoryNote: "the call stack on the left, objects on the heap on the right",
+  hpStatics: "STATICS",
+  hpStaticsNote: "values shared across the program",
+  hpConstants: "CONSTANTS",
+  hpConstantsNote: "fixed at compile time",
+  hpKindEntry: "entry point",
+  hpKindStatic: "static method",
+  hpKindMethod: "instance method",
+  hpKindCtor: "constructor",
+  hpOn: "on {recv}",
+  hpPaused: "paused at line {line}",
+  consoleHead: "Console",
+  consoleIdle: "Nothing printed yet.",
+  vlPreparing: "Preparing compiler...",
+  vlVisualize: "Visualize",
+  vlTracing: "Tracing...",
+  vlHint: "Write a small program, then press Visualize to watch it run.",
+  vlDidNotCompile: "Did not compile.",
+  vlNoStepsHint: "That program produced no steps to show. Add a statement or two inside Main.",
+  vlNoSteps: "Nothing to trace.",
+  // Singular and plural are separate templates - see the note in
+  // trace-narration.ts; not every language pluralises by adding a letter.
+  vlTracedOne: "Traced {n} step.",
+  vlTracedMany: "Traced {n} steps.",
+  // These two are appended to a "Traced ..." line, so they keep their leading space.
+  vlTruncated: " Stopped early - the program ran too long.",
+  vlThrew: " It threw: {message}",
+  vlFailedHint: "The tracer took too long or could not load. Try again.",
 };
 
 export interface MemoryVizConfig {
@@ -341,7 +410,8 @@ export interface MemoryVizConfig {
    *  (default "Next"). The host can supply its own wording. */
   nextLabel?: string;
   /** Overridable chrome strings for i18n (transport, font control, transcript
-   *  author tags, tool-rack directions). Any omitted key falls back to English. */
+   *  author tags, tool-rack directions, the memory captions and frame badges, and
+   *  the console panel). Any omitted key falls back to English. */
   labels?: Partial<VizLabels>;
   /** Called whenever the tracked XP changes (after awarding on the last step),
    *  so the host can reflect it in its own UI. The widget owns no XP label. */

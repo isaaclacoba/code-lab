@@ -11,6 +11,9 @@
 // heap fields hot, and computes the incremental (delta) console output.
 
 import type { Frame, GlobalSlot, HeapObject, Slot, Step } from "./memory-model.js";
+import { fill } from "./template.js";
+import { resolveNarration } from "./trace-narration.js";
+import type { TraceNarration } from "./trace-narration.js";
 
 /** One local (or parameter) in a frame. A value type carries `value`; a
  *  reference type carries `ref` (the id of a heap object) - never both. A
@@ -79,8 +82,13 @@ export interface ExecTrace {
 
 /** Turn a generated trace into MemoryViz steps. Pure: no DOM, unit-testable.
  *  The mapping is 1:1 on structure; the only computed parts are the per-step
- *  change highlights (hot / hotFields) and the incremental printed output. */
-export function traceToSteps(trace: ExecTrace): Step[] {
+ *  change highlights (hot / hotFields) and the incremental printed output.
+ *
+ *  `narration` translates the generated captions. Omit it for English; a partial
+ *  set keeps the English default for every key it does not carry, and an override
+ *  that drops a `{slot}` is refused rather than rendered without its value. */
+export function traceToSteps(trace: ExecTrace, narration?: Partial<TraceNarration>): Step[] {
+  const t = resolveNarration(narration).narration;
   const src = trace.code ?? [];
   const steps = collapseCallEntries(trace.steps ?? []);
   const out: Step[] = [];
@@ -110,7 +118,7 @@ export function traceToSteps(trace: ExecTrace): Step[] {
     const prevHeapIds = new Set((i > 0 ? steps[i - 1].heap ?? [] : []).map((o) => o.id));
 
     const step: Step = {
-      narr: describeStep(prevFrames, ts, stack, heap, prevHeapIds, globals, printed, src),
+      narr: describeStep(prevFrames, ts, stack, heap, prevHeapIds, globals, printed, src, t),
       pc: typeof ts.line === "number" && ts.line > 0 ? ts.line - 1 : -1,
       codeLive: true,
       stack,
@@ -149,10 +157,10 @@ export function traceToSteps(trace: ExecTrace): Step[] {
     const printedLines = prevStdout ? prevStdout.replace(/\n+$/, "").split("\n").length : 0;
     const terminal: Step = {
       narr: trace.truncated
-        ? "Stopped early - there were too many steps to show the rest."
+        ? t.truncated
         : printedLines > 0
-          ? `The program finished. It printed ${printedLines} line${printedLines === 1 ? "" : "s"}.`
-          : "The program finished without printing anything.",
+          ? fill(printedLines === 1 ? t.finishedPrintedOne : t.finishedPrintedMany, { n: printedLines })
+          : t.finishedNoPrint,
       pc: -1,
       codeLive: true,
       stack,
@@ -280,6 +288,7 @@ function describeStep(
   globals: GlobalSlot[],
   printed: string,
   src: string[],
+  t: TraceNarration,
 ): string {
   const curFrames = ts.frames ?? [];
   const prevLen = prevFrames.length;
@@ -287,12 +296,12 @@ function describeStep(
 
   // A call pushed a frame (its first statement runs together with the push after
   // the redundant entry snapshot is collapsed).
-  if (curLen > prevLen) return callNarration(curFrames[curLen - 1]);
+  if (curLen > prevLen) return callNarration(curFrames[curLen - 1], t);
   // A call returned - a frame was popped.
-  if (curLen < prevLen) return returnNarration(prevFrames[prevLen - 1], curFrames[curLen - 1]);
+  if (curLen < prevLen) return returnNarration(prevFrames[prevLen - 1], curFrames[curLen - 1], t);
 
   // Something was written to the console.
-  if (printed) return printedNarration(printed);
+  if (printed) return printedNarration(printed, t);
 
   const topFrame = stack[stack.length - 1];
   const hotSlot = topFrame ? topFrame.vars.find((v) => v.hot) : undefined;
@@ -300,50 +309,49 @@ function describeStep(
 
   // A local was set to a freshly created object, e.g. `Cat c = new Cat();`.
   if (created && hotSlot && hotSlot.ref != null && hotSlot.ref === created.id) {
-    return "Set `" + hotSlot.k + "` to a new `" + created.type + "`";
+    return fill(t.setToNew, { name: hotSlot.k ?? "", type: created.type });
   }
   if (created) {
     const label = typeof created.no === "number" ? `${created.type} #${created.no}` : created.type;
     return typeof created.no === "number"
-      ? "Created a `" + created.type + "` (`" + label + "`)"
-      : "Created a `" + created.type + "`";
+      ? fill(t.createdNumbered, { type: created.type, label })
+      : fill(t.created, { type: created.type });
   }
   // A local changed value or was pointed at a different object.
   if (hotSlot) {
-    if (hotSlot.ref != null) return "Pointed `" + hotSlot.k + "` at `" + heapLabel(hotSlot.ref, heap) + "`";
-    return "Set `" + hotSlot.k + "` to `" + (hotSlot.v ?? "") + "`";
+    if (hotSlot.ref != null)
+      return fill(t.pointedAt, { name: hotSlot.k ?? "", label: heapLabel(hotSlot.ref, heap, t) });
+    return fill(t.setTo, { name: hotSlot.k ?? "", value: hotSlot.v ?? "" });
   }
   // A static / field-like global changed.
   const g = globals.find((s) => s.hot);
-  if (g) return "Set `" + g.k + "` to `" + g.v + "`";
+  if (g) return fill(t.setTo, { name: g.k, value: g.v });
 
-  return runningNarration(ts.line, src);
+  return runningNarration(ts.line, src, t);
 }
 
 /** "Called `Speak()` on `Cat #1`" / "Entered `Main`" / "Called the `Clock`
  *  constructor". The "on X" only appears for an instance call, so a static call
  *  reads differently from a method call without a separate badge in the text. */
-function callNarration(top: TraceFrame): string {
-  if (top.kind === "entry") return "Entered `" + (top.name || "Main") + "`";
+function callNarration(top: TraceFrame, t: TraceNarration): string {
+  if (top.kind === "entry") return fill(t.entered, { name: top.name || "Main" });
   if (top.kind === "ctor") {
     const type = (top.name || "").replace(/^new\s+/, "") || "object";
-    return "Called the `" + type + "` constructor";
+    return fill(t.calledCtor, { type });
   }
   const m = methodLabel(top);
-  return top.recv ? "Called `" + m + "` on `" + top.recv + "`" : "Called `" + m + "`";
+  return top.recv ? fill(t.calledOn, { method: m, recv: top.recv }) : fill(t.called, { method: m });
 }
 
 /** "`Speak()` returned to `Main`" / "The `Clock` constructor finished". */
-function returnNarration(left: TraceFrame, back: TraceFrame | undefined): string {
+function returnNarration(left: TraceFrame, back: TraceFrame | undefined, t: TraceNarration): string {
   const backName = back ? back.name : null;
   if (left.kind === "ctor") {
     const type = (left.name || "").replace(/^new\s+/, "") || "object";
-    return backName
-      ? "The `" + type + "` constructor finished - back in `" + backName + "`"
-      : "The `" + type + "` constructor finished";
+    return backName ? fill(t.ctorFinishedBack, { type, caller: backName }) : fill(t.ctorFinished, { type });
   }
   const m = methodLabel(left);
-  return backName ? "`" + m + "` returned to `" + backName + "`" : "`" + m + "` returned";
+  return backName ? fill(t.returnedTo, { method: m, caller: backName }) : fill(t.returned, { method: m });
 }
 
 function methodLabel(f: TraceFrame): string {
@@ -353,25 +361,25 @@ function methodLabel(f: TraceFrame): string {
 
 /** "Printed `Meow`" - the fresh line, without the trailing newline, first line
  *  only if several were printed at once. */
-function printedNarration(printed: string): string {
+function printedNarration(printed: string, t: TraceNarration): string {
   const parts = printed.replace(/\n+$/, "").split("\n");
   const first = (parts[0] ?? "").replace(/`/g, "");
-  if (first === "") return "Printed a blank line";
+  if (first === "") return t.printedBlank;
   const shown = parts.length > 1 ? first + " \u2026" : first;
-  return "Printed `" + shown + "`";
+  return fill(t.printed, { text: shown });
 }
 
 /** The card label for the object a reference points at, e.g. "Cat #1". */
-function heapLabel(ref: string, heap: HeapObject[]): string {
+function heapLabel(ref: string, heap: HeapObject[], t: TraceNarration): string {
   const o = heap.find((h) => h.id === ref);
-  if (!o) return "an object";
+  if (!o) return t.anObject;
   return typeof o.no === "number" ? `${o.type} #${o.no}` : o.type;
 }
 
 /** A plain fallback when no structural change is detectable for a step: the
  *  source line being run. */
-function runningNarration(line: number, src: string[]): string {
+function runningNarration(line: number, src: string[], t: TraceNarration): string {
   const text = typeof line === "number" && line > 0 ? (src[line - 1] ?? "").trim() : "";
-  if (!text) return "Running the program.";
-  return "Running this line: `" + text + "`";
+  if (!text) return t.running;
+  return fill(t.runningLine, { line: text });
 }
