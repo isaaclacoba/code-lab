@@ -1727,6 +1727,14 @@
   overflow-x: auto;
 }
 .cl-ob-dim { color: #8b98a5; }
+/* The line the card's prose is about. A band rather than a colour change,
+   because the panel's colours already mean something - a tint is an object's
+   identity, and repainting one to mean "look here" would break the links. */
+.cl-ob-focus {
+  background: rgba(246, 173, 85, 0.16);
+  box-shadow: -6px 0 0 rgba(246, 173, 85, 0.16), 6px 0 0 rgba(246, 173, 85, 0.16);
+  border-radius: 2px;
+}
 .cl-ob-new { color: #55c86a; }
 .cl-ob-type { color: #9fb3c8; }
 

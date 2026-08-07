@@ -82,6 +82,15 @@ export interface ObjectsScene {
    *  rather than just the payload. The header is invisible in normal git
    *  output, so a lesson about it has no other way to put it on screen. */
   openRaw?: boolean;
+  /** Which lines the card's prose is actually about. Each drawn line declares a
+   *  key, so anything on the panel can be named: `config`, `description`,
+   *  `hooks/`, `info/`, `objects/`, `objects/info/`, `objects/pack/`,
+   *  `refs/heads/`, `refs/tags/`, `HEAD`, `index`, `your folder`; an object by
+   *  its id, full or short, or by type (`blob`, `tree`, `commit`, which marks
+   *  every object of that type - an author writing a card cannot know an id the
+   *  replay computes); a ref by full name or short (`refs/heads/main` or
+   *  `main`); an index row as `index/<path>`; a worktree row as its path. */
+  focus?: string[];
   /** A short caption under the picture. */
   note?: string;
   /** Fixed so ids are deterministic - a lesson can quote one in its prose. */
@@ -93,6 +102,7 @@ export interface ResolvedObjectsScene {
   acts: ObjectAct[];
   fresh: ObjectAct[];
   detail: "core" | "full";
+  focus: string[];
   open?: "blob" | "tree" | "commit";
   /** Show the EXACT bytes git hashes - the `blob 12\0` header included -
    *  rather than just the payload. The header is invisible in normal git
@@ -119,6 +129,7 @@ export function resolveObjects(scene: ObjectsScene | undefined): ResolvedObjects
     detail: scene.detail === "full" ? "full" : "core",
     open: OPENABLE.includes(scene.open as never) ? scene.open : undefined,
     openRaw: scene.openRaw === true,
+    focus: Array.isArray(scene.focus) ? scene.focus.filter((k) => typeof k === "string" && k) : [],
     note: scene.note,
     author: scene.author || DEFAULT_AUTHOR,
   };

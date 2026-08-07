@@ -325,3 +325,45 @@ test("HEAD marker has a data-head attribute for animation targeting", () => {
   const markers = view.el.querySelectorAll(".cl-ob-head[data-head]");
   assert.ok(markers.length > 0, "HEAD markers should have data-head attribute");
 });
+
+test("an object row names what it points at, in git's own words", () => {
+  const text = render({ lens: "folder", acts: SAVE }).el.querySelector(".cl-ob-folder")!.textContent!;
+  // Matched by pattern, not by substring: "hello.txt" also appears in the
+  // worktree listing at the bottom of the same panel.
+  const line = (re: RegExp) => text.split("\n").find((l) => re.test(l))!;
+
+  // The commit-to-tree link is the one the folder lens could not show.
+  assert.match(line(/commit/), /commit\s+tree\s+68aba62/);
+  // A tree names each entry by path, the way `git cat-file` does.
+  assert.match(line(/tree\s+hello/), /tree\s+hello\.txt\s+3b18e51/);
+  // Control: a blob points at nothing, so it gains no column. Without this,
+  // printing a link on every row would pass.
+  assert.doesNotMatch(line(/blob/), /tree|parent|hello/);
+});
+
+test("focus bands the line the card is about, and only that line", () => {
+  const scene = { lens: "folder", acts: SAVE, detail: "full" } as const;
+
+  // Control: nothing is banded until a card asks for it.
+  assert.equal(render({ ...scene }).el.querySelectorAll(".cl-ob-focus").length, 0);
+
+  const one = render({ ...scene, focus: ["config"] });
+  const banded = one.el.querySelectorAll(".cl-ob-focus");
+  assert.equal(banded.length, 1, "exactly one line banded");
+  assert.equal(banded[0].textContent, "config");
+
+  // Four different kinds of line, because each is addressed a different way.
+  const many = render({ ...scene, focus: ["HEAD", "main", "68aba62", "hello.txt"] });
+  const texts = Array.from(many.el.querySelectorAll(".cl-ob-focus")).map((e) => e.textContent!);
+  assert.equal(texts.length, 4);
+  assert.ok(texts.some((t) => t.startsWith("HEAD")), "a fixed name");
+  assert.ok(texts.some((t) => t.startsWith("main")), "a ref, by its short name");
+  assert.ok(texts.some((t) => t.includes("68/aba62e")), "an object, by short id");
+  assert.ok(texts.some((t) => t.includes("hello world")), "a worktree row, by path");
+
+  // By type, for the card that says "a tree" without knowing which one.
+  const byType = render({ ...scene, focus: ["tree"] });
+  const trees = Array.from(byType.el.querySelectorAll(".cl-ob-focus"));
+  assert.equal(trees.length, 1);
+  assert.match(trees[0].textContent!, /^68\/aba62e/, "the tree object, not the commit that names one");
+});

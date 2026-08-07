@@ -25,7 +25,7 @@ import {
   type ChainRow,
   type Replay,
 } from "../core/objects-scene.js";
-import type { ObjectStore } from "../core/git-objects.js";
+import type { ObjectStore, StoredObject } from "../core/git-objects.js";
 
 export class ObjectsView implements Panel {
   readonly el: HTMLElement;
@@ -65,7 +65,7 @@ export class ObjectsView implements Panel {
     // opened object's row goes quiet and lets the raw block speak for it.
     const opened = scene.open ? openObject(replay, scene.open, scene.openRaw) : null;
 
-    if (wantsFolder) this.folderEl.innerHTML = folderHtml(replay, this.labels, scene.detail);
+    if (wantsFolder) this.folderEl.innerHTML = folderHtml(replay, this.labels, scene.detail, scene.focus);
     if (wantsChain) {
       const rows = chainRows(replay);
       this.chainEl.innerHTML = chainHtml(rows, this.labels, replay.store, opened ? opened.id : null);
@@ -154,21 +154,50 @@ function sleep(ms: number): Promise<void> {
  *  `full` adds everything else `git init` really creates. It is dimmed, because
  *  the point of showing it is that a learner opening a real `.git` finds no
  *  surprises - not that any of it matters yet. */
-function folderHtml(replay: Replay, labels: VizLabels, detail: "core" | "full"): string {
+function folderHtml(
+  replay: Replay,
+  labels: VizLabels,
+  detail: "core" | "full",
+  focus: readonly string[] = [],
+): string {
   const { store, added } = replay;
+  const wanted = new Set(focus);
+  // A line the card's prose is about gets a band behind it. Every line declares
+  // its own key, so the whole panel is addressable rather than the few parts
+  // someone remembered to wire up.
+  const row = (indent: string, keys: string | string[], content: string) => {
+    const hit = (Array.isArray(keys) ? keys : [keys]).some((k) => wanted.has(k));
+    return indent + (hit ? `<span class="cl-ob-focus">${content}</span>` : content);
+  };
+
   const lines: string[] = [".git/"];
   if (detail === "full") {
-    lines.push(`  ${dim("config")}`, `  ${dim("description")}`, `  ${dim("hooks/")}`, `  ${dim("info/")}`);
+    lines.push(
+      row("  ", "config", dim("config")),
+      row("  ", "description", dim("description")),
+      row("  ", "hooks/", dim("hooks/")),
+      row("  ", "info/", dim("info/")),
+    );
   }
-  lines.push("  objects/");
-  if (detail === "full") lines.push(`    ${dim("info/")}`, `    ${dim("pack/")}`);
+  lines.push(row("  ", "objects/", "objects/"));
+  if (detail === "full") {
+    lines.push(
+      row("    ", "objects/info/", dim("info/")),
+      row("    ", "objects/pack/", dim("pack/")),
+    );
+  }
   if (!store.objects.size) lines.push(`    ${dim(escapeHtml(labels.objEmpty))}`);
   for (const [id, object] of store.objects) {
     const tinted = `<span class="cl-ob-id ${tintClass(id, store)}">${id.slice(0, 2)}/${id.slice(2, 8)}...</span>`;
-    const body = `${tinted}  <span class="cl-ob-type">${object.type}</span>`;
-    lines.push(`    ${added.has(id) ? `<span class="cl-ob-new">${body}</span>` : body}`);
+    // `commit` is the longest type word, so every link column starts in the same
+    // place and the ids line up down the panel.
+    const body = `${tinted}  <span class="cl-ob-type">${object.type.padEnd(6)}</span>${linksHtml(object, store)}`;
+    // Also addressable by type, because a lesson author writing a card cannot
+    // know an id that a replay computes - and "the tree" is what the prose says.
+    lines.push(row("    ", [id, short(id), object.type],
+      added.has(id) ? `<span class="cl-ob-new">${body}</span>` : body));
   }
-  lines.push("  refs/heads/");
+  lines.push(row("  ", "refs/heads/", "refs/heads/"));
   if (!store.refs.size) lines.push(`    ${dim(escapeHtml(labels.objNoNames))}`);
   // Which ref does HEAD point to, if any? The HEAD marker sits beside that line.
   const headRef = store.head.kind === "ref" ? store.head.ref : null;
@@ -177,24 +206,26 @@ function folderHtml(replay: Replay, labels: VizLabels, detail: "core" | "full"):
     const marker = headRef === name
       ? ` <span class="cl-ob-head" data-head="${escapeAttr(name)}">◂ HEAD</span>`
       : `<span class="cl-ob-head" data-head="${escapeAttr(name)}" style="opacity:0">◂ HEAD</span>`;
-    lines.push(`    <span class="cl-ob-ref">${shortName}</span>   ${tintId(id, store)}${marker}`);
+    lines.push(row("    ", [name, shortName],
+      `<span class="cl-ob-ref">${shortName}</span>   ${tintId(id, store)}${marker}`));
   }
-  if (detail === "full") lines.push(`  ${dim("refs/tags/")}`);
+  if (detail === "full") lines.push(row("  ", "refs/tags/", dim("refs/tags/")));
   // HEAD is a text file holding one line, and that line is what it says here.
   // Drawing an arrow instead would be a rendering of the truth rather than the
   // truth, and this track's whole promise is that these are ordinary files.
   const headLine = store.head.kind === "ref"
     ? `ref: ${store.head.ref}`
     : tintId(store.head.id, store);
-  lines.push(`  HEAD    ${dim(escapeHtml(headLine))}`);
+  lines.push(row("  ", "HEAD", `HEAD    ${dim(escapeHtml(headLine))}`));
   if (store.index.size) {
-    lines.push("  index");
+    lines.push(row("  ", "index", "index"));
     for (const [path, id] of store.index) {
-      lines.push(`    ${dim(`${escapeHtml(path)}  `)}${tintId(id, store)}`);
+      lines.push(row("    ", `index/${path}`,
+        `${dim(`${escapeHtml(path)}  `)}${tintId(id, store)}`));
     }
   }
   if (store.worktree.size) {
-    lines.push("", escapeHtml(labels.objYourFolder));
+    lines.push("", row("", "your folder", escapeHtml(labels.objYourFolder)));
     // Show each file's first line beside its name. Without it the learner has to
     // take the lesson's word for which files hold the same bytes - and "same
     // bytes, same name" is the one claim this track cannot ask anyone to take on
@@ -205,10 +236,29 @@ function folderHtml(replay: Replay, labels: VizLabels, detail: "core" | "full"):
       const firstLine = text.split("\n")[0];
       const shown = firstLine.length > 30 ? `${firstLine.slice(0, 29)}\u2026` : firstLine;
       const pad = " ".repeat(width - path.length);
-      lines.push(`  ${escapeHtml(path)}${pad}   ${dim(escapeHtml(shown))}`);
+      lines.push(row("  ", path, `${escapeHtml(path)}${pad}   ${dim(escapeHtml(shown))}`));
     }
   }
   return lines.join("\n");
+}
+
+/** What an object points at, in git's own words, with the target's id repeated
+ *  verbatim and tinted. That repetition is the link language the panel already
+ *  used for `refs/heads/` and for `index`; `objects/` was the only place that
+ *  named nothing, which made the commit-to-tree link the one relationship the
+ *  picture could not show. */
+function linksHtml(object: StoredObject, store: ObjectStore): string {
+  const parts: string[] = [];
+  for (const entry of object.entries ?? []) {
+    parts.push(`${dim(escapeHtml(entry.name))} ${tintId(entry.id, store)}`);
+  }
+  if (object.commit) {
+    parts.push(`${dim("tree")} ${tintId(object.commit.tree, store)}`);
+    for (const parent of object.commit.parents) {
+      parts.push(`${dim("parent")} ${tintId(parent, store)}`);
+    }
+  }
+  return parts.length ? ` ${parts.join("  ")}` : "";
 }
 
 function dim(text: string): string {
