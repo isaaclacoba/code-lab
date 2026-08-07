@@ -1767,6 +1767,8 @@
   width: 10px; height: 2px;
   background: #d6ddd9;
 }
+/* The chain lens draws rows, not text, so the band becomes the row itself. */
+.cl-ob-focus-row { background: #fff6e9; border-color: #f6ad55; }
 .cl-ob-fresh { border-color: #9fd0be; box-shadow: 0 0 0 3px rgba(31, 111, 95, 0.1); }
 .cl-ob-orphan { opacity: 0.55; border-style: dashed; }
 

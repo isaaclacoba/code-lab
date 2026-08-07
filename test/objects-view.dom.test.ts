@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import "./setup-dom.ts";
 import { ObjectsView } from "../src/dom/objects-view.ts";
 import { DEFAULT_VIZ_LABELS } from "../src/core/memory-model.ts";
+import { objectFocusKeys, replayObjects, resolveObjects } from "../src/core/objects-scene.ts";
 import type { ObjectAct, ObjectsScene } from "../src/core/objects-scene.ts";
 import type { SyncCtx } from "../src/dom/panel.ts";
 
@@ -65,6 +66,20 @@ test("a row's names chip repeats the id it names, verbatim", () => {
   const chip = rows[0].querySelector(".cl-ob-names")!.textContent;
   assert.equal(chip, rows[1].querySelector(".cl-ob-id")!.textContent);
   assert.equal(rows[2].querySelector(".cl-ob-names"), null, "a blob names nothing");
+});
+
+test("nothing is faded when NOTHING is reachable - that is the baseline, not news", () => {
+  // Before the first commit no object is reachable, so marking them all said
+  // nothing and cost the whole picture 55% opacity. Two lessons shipped like it.
+  const view = render({
+    lens: "chain",
+    acts: [
+      { act: "write", path: "a.txt", text: "one\n" }, { act: "store", path: "a.txt" },
+      { act: "write", path: "b.txt", text: "two\n" }, { act: "store", path: "b.txt" },
+    ],
+  });
+  assert.equal(view.el.querySelectorAll(".cl-ob-row").length, 2, "both objects still drawn");
+  assert.equal(view.el.querySelectorAll(".cl-ob-orphan").length, 0, "and none of them faded");
 });
 
 test("an object no name reaches is drawn, and drawn differently", () => {
@@ -366,4 +381,33 @@ test("focus bands the line the card is about, and only that line", () => {
   const trees = Array.from(byType.el.querySelectorAll(".cl-ob-focus"));
   assert.equal(trees.length, 1);
   assert.match(trees[0].textContent!, /^68\/aba62e/, "the tree object, not the commit that names one");
+});
+
+test("every focus key the core advertises really bands a line", () => {
+  // `objectFocusKeys` is what a DOM-less tool trusts when it tells an author a
+  // key is a typo. If it and the view ever drift apart, either a real key gets
+  // rejected or a typo gets waved through - and a typo is silent in a browser,
+  // which is exactly how cards shipped pointing at lines nobody drew. This test
+  // is the only thing holding the two together.
+  for (const lens of ["folder", "chain"] as const) {
+    const scene = { lens, acts: SAVE, detail: "full" } as const;
+    const keys = objectFocusKeys(replayObjects(resolveObjects({ ...scene })!), "full", lens);
+    assert.ok(keys.length >= 4, `${lens}: expected keys, got ${keys.length}`);
+    for (const key of keys) {
+      const marked = render({ ...scene, focus: [key] })
+        .el.querySelectorAll(".cl-ob-focus, .cl-ob-focus-row");
+      assert.ok(marked.length >= 1, `${lens}: "${key}" is advertised as a key but marks nothing`);
+    }
+  }
+});
+
+test("focus marks a row on the chain lens too, not just the folder listing", () => {
+  const view = render({ lens: "chain", acts: SAVE, focus: ["tree", "main"] });
+  const rows = Array.from(view.el.querySelectorAll(".cl-ob-focus-row"));
+  assert.equal(rows.length, 1, "one object row marked");
+  assert.match(rows[0].textContent!, /^tree/);
+  // A ref is a chip, not a row, so it takes the inline band instead.
+  const chips = view.el.querySelectorAll(".cl-ob-focus");
+  assert.equal(chips.length, 1);
+  assert.equal(chips[0].textContent, "main");
 });

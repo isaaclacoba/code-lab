@@ -135,6 +135,50 @@ export function resolveObjects(scene: ObjectsScene | undefined): ResolvedObjects
   };
 }
 
+/** Every `focus` key the folder lens declares for this state - the one source of
+ *  truth for what a card is allowed to point at. The view draws the lines; this
+ *  says what they answer to, so a tool with no DOM can tell an author that a key
+ *  matches nothing. A key that matches nothing is silent in a browser, which is
+ *  how four cards shipped pointing at lines that were never drawn. */
+export function objectFocusKeys(
+  replay: Replay,
+  detail: "core" | "full" = "core",
+  lens: ObjectLens = "folder",
+): string[] {
+  const { store } = replay;
+  const keys = new Set<string>();
+  // The chain lens draws objects and refs only; the folder lens draws the rest
+  // of `.git` too. Naming a line the current lens does not draw is a silent
+  // no-op, so the two lenses advertise different keys.
+  const drawsFolder = lens === "folder" || lens === "both";
+  if (drawsFolder) {
+    for (const k of ["objects/", "refs/heads/", "HEAD"]) keys.add(k);
+    if (detail === "full") {
+      for (const k of ["config", "description", "hooks/", "info/", "objects/info/", "objects/pack/", "refs/tags/"]) {
+        keys.add(k);
+      }
+    }
+  }
+  for (const [id, object] of store.objects) {
+    keys.add(id);
+    keys.add(short(id));
+    keys.add(object.type);
+  }
+  for (const name of store.refs.keys()) {
+    keys.add(name);
+    keys.add(name.replace(/^refs\/heads\//, ""));
+  }
+  if (drawsFolder && store.index.size) {
+    keys.add("index");
+    for (const p of store.index.keys()) keys.add(`index/${p}`);
+  }
+  if (drawsFolder && store.worktree.size) {
+    keys.add("your folder");
+    for (const p of store.worktree.keys()) keys.add(p);
+  }
+  return [...keys];
+}
+
 /** What a replay produced: the store, plus which objects the step's NEW acts
  *  created, so the view can mark them without diffing two stores. */
 export interface Replay {

@@ -68,7 +68,7 @@ export class ObjectsView implements Panel {
     if (wantsFolder) this.folderEl.innerHTML = folderHtml(replay, this.labels, scene.detail, scene.focus);
     if (wantsChain) {
       const rows = chainRows(replay);
-      this.chainEl.innerHTML = chainHtml(rows, this.labels, replay.store, opened ? opened.id : null);
+      this.chainEl.innerHTML = chainHtml(rows, this.labels, replay.store, opened ? opened.id : null, scene.focus);
     }
 
     this.openEl.hidden = !opened;
@@ -273,10 +273,19 @@ function chainHtml(
   labels: VizLabels,
   store: ObjectStore,
   openedId: string | null,
+  focus: readonly string[] = [],
 ): string {
+  const wanted = new Set(focus);
+  const isWanted = (...keys: string[]) => keys.some((k) => wanted.has(k));
   if (!rows.length) return `<p class="cl-ob-empty">${escapeHtml(labels.objNothingYet)}</p>`;
   // Which ref does HEAD point to? The HEAD marker sits beside that ref's chip.
   const headRef = store.head.kind === "ref" ? store.head.ref : null;
+  // Dashed-and-faded is a CONTRAST: it says "this one, unlike those". Before any
+  // commit exists nothing is reachable, so the mark landed on every row at once,
+  // dropping the whole picture to 55% opacity while distinguishing nothing. Two
+  // entire lessons rendered that way. Mark unreachable rows only when there is
+  // something reachable to tell them apart from.
+  const anyReachable = rows.some((r) => r.kind !== "ref" && !r.unreachable);
   return rows
     .map((row) => {
       if (row.kind === "ref") {
@@ -287,11 +296,13 @@ function chainHtml(
         const marker = headRef === fullRef
           ? ` <span class="cl-ob-head" data-head="${escapeAttr(fullRef)}">◂ HEAD</span>`
           : `<span class="cl-ob-head" data-head="${escapeAttr(fullRef)}" style="opacity:0">◂ HEAD</span>`;
-        return `<span class="cl-ob-ref">${shortName}</span>${marker}`;
+        const chip = `<span class="cl-ob-ref">${shortName}</span>`;
+        const named = isWanted(fullRef, row.label) ? `<span class="cl-ob-focus">${chip}</span>` : chip;
+        return `${named}${marker}`;
       }
       const classes = ["cl-ob-row"];
       if (row.fresh) classes.push("cl-ob-fresh");
-      if (row.unreachable) classes.push("cl-ob-orphan");
+      if (row.unreachable && anyReachable) classes.push("cl-ob-orphan");
       // `blob`, `tree` and `commit` stay git's own words - the learner will meet
       // them verbatim in real git output. Only the qualifier around them moves.
       // The row is already dashed and the legend already says what dashed
@@ -304,6 +315,7 @@ function chainHtml(
       // repeat. The opened row keeps its identity and hands over the contents.
       const isOpen = openedId !== null && row.id === openedId;
       if (isOpen) classes.push("cl-ob-open-row");
+      if (isWanted(row.id, short(row.id), row.label)) classes.push("cl-ob-focus-row");
       const kind = escapeHtml(row.label);
       // `tree` and `parent` are git's own field names and stay untranslated,
       // like `blob`. Without them two ids sit side by side looking identical.

@@ -185,7 +185,7 @@ export type {
   ChainRow, ObjectAct, ObjectLens, ObjectsScene, Replay, ResolvedObjectsScene,
 } from "./core/objects-scene.js";
 export {
-  DEFAULT_AUTHOR, chainRows, replayObjects, resolveObjects, short,
+  DEFAULT_AUTHOR, chainRows, objectFocusKeys, replayObjects, resolveObjects, short,
 } from "./core/objects-scene.js";
 export type {
   CommitFields, HeadState, ObjectId, ObjectType, StoredObject, TreeEntry,
