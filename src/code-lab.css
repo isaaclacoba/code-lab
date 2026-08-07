@@ -1142,7 +1142,14 @@
 .cl-mv .cl-mv-hp-card.glow { box-shadow: 0 0 0 3px rgba(31,111,95,0.28); }
 .cl-mv .cl-mv-hp-type { font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-accent-ink, var(--mv-heap)); font-weight: 600; }
 .cl-mv .cl-mv-hp-no { color: var(--mv-name-ink, #475569); font-weight: 600; }
-.cl-mv .cl-mv-hp-field { display: grid; grid-template-columns: minmax(6ch, 40%) 1fr; gap: 10px; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-obj-field-ink, #334155); margin-top: 4px; }
+/* A field row is `name = value`. The name column was capped at 40%, so a real
+   field name (`_batteryPercent`) overflowed it and printed straight through the
+   value beside it, and the `=` was pushed onto a line of its own. The name now
+   takes the width it needs and the value takes the rest; both may shrink, and a
+   name with nowhere left to go wraps rather than overlapping its neighbour. */
+.cl-mv .cl-mv-hp-field { display: grid; grid-template-columns: minmax(6ch, auto) 1fr; gap: 4px 10px; align-items: baseline; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-obj-field-ink, #334155); margin-top: 4px; }
+.cl-mv .cl-mv-hp-fkey { min-width: 0; overflow-wrap: anywhere; }
+.cl-mv .cl-mv-hp-fval { min-width: 0; overflow-wrap: anywhere; }
 .cl-mv .cl-mv-hp-fkey::after { content: " ="; color: var(--mv-addr-ink, #687281); }
 .cl-mv .cl-mv-hp-field.is-hot { background: var(--mv-hot-bg, #fff7ea); border-radius: 4px; padding: 1px 5px; box-shadow: inset 0 0 0 1px var(--mv-hot-inset, #f0c14b); color: var(--mv-hot-ink, #b45309); font-weight: 700; }
 .cl-mv .cl-mv-hp-arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
@@ -1175,6 +1182,40 @@
 .cl-vl-editor { display: grid; gap: 0.6rem; }
 .cl-vl-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
 .cl-vl-run { min-width: 9rem; }
+
+/* A wait drawn inside the Visualize button. The compiler is a ~30MB WebAssembly
+   runtime and a trace is a full compile-and-run, so both waits are long enough
+   that a fixed label reads as a hang. The min-width holds the button steady as
+   the phase text changes underneath it. */
+.cl-vl-wait { display: grid; gap: 0.3rem; min-width: 11.5rem; }
+.cl-vl-wait-label { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cl-vl-wait-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 26%, transparent);
+  overflow: hidden;
+}
+.cl-vl-wait-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: currentColor;
+  transition: width 0.25s ease;
+}
+/* Nothing to measure: the bar sweeps rather than inventing a percentage. */
+.cl-vl-wait-fill.is-indeterminate {
+  width: 40%;
+  transition: none;
+  animation: cl-vl-sweep 1.1s ease-in-out infinite;
+}
+@keyframes cl-vl-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cl-vl-wait-fill.is-indeterminate { animation: none; width: 100%; opacity: 0.5; }
+}
 .cl-vl-status { font-size: 0.85rem; color: var(--cl-ink-soft); }
 .cl-vl-monaco { min-height: 240px; border: 1px solid var(--cl-line); border-radius: var(--cl-radius); overflow: hidden; }
 .cl-vl-stage { min-height: 120px; }

@@ -315,6 +315,15 @@ export interface VizLabels {
   vlPreparing: string;
   vlVisualize: string;
   vlTracing: string;
+  /** The three boot phases, so the ~30MB runtime download reads as progress
+   *  rather than a hang. `{percent}` is real only while downloading; the two
+   *  phases after it have nothing to measure, so they name themselves instead.
+   *  `vlTracingSecs` counts the wait on a trace, where there is no percentage to
+   *  be had - `{secs}` is whole seconds since the press. */
+  vlBootDownload: string;
+  vlBootStart: string;
+  vlBootWarm: string;
+  vlTracingSecs: string;
   vlHint: string;
   vlDidNotCompile: string;
   vlNoStepsHint: string;
@@ -373,6 +382,10 @@ export const DEFAULT_VIZ_LABELS: VizLabels = {
   vlPreparing: "Preparing compiler...",
   vlVisualize: "Visualize",
   vlTracing: "Tracing...",
+  vlBootDownload: "Downloading compiler... {percent}%",
+  vlBootStart: "Starting compiler...",
+  vlBootWarm: "Warming up...",
+  vlTracingSecs: "Tracing... {secs}s",
   vlHint: "Write a small program, then press Visualize to watch it run.",
   vlDidNotCompile: "Did not compile.",
   vlNoStepsHint: "That program produced no steps to show. Add a statement or two inside Main.",

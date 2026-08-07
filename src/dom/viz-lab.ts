@@ -13,6 +13,7 @@ import { mergeTemplates, fill } from "../core/template.js";
 import { classifyTraceOutcome, tracerFailedOutcome } from "../core/viz-trace-outcome.js";
 import type { VizTraceOutcome } from "../core/viz-trace-outcome.js";
 import type { TraceNarration } from "../core/trace-narration.js";
+import { bootWait, traceWait } from "../core/wait-progress.js";
 
 /** The trace wire reports optional line/friendly as number|string|null; the
  *  shared error panel wants them as number|string|undefined. Normalize once. */
@@ -106,6 +107,7 @@ export class VizLab {
   private ready = false;
   private mounted = false;
   private pendingSource: string | null = null;
+  private traceTimer: ReturnType<typeof setInterval> | null = null;
 
   private constructor(host: HTMLElement, config: VizLabConfig) {
     this.legend = config.legend;
@@ -116,6 +118,10 @@ export class VizLab {
     this.runner = new IframeRunner({
       url: config.runnerUrl,
       readyTimeout: config.readyTimeout ?? 180000,
+      // The runtime is ~30MB, so this wait is tens of seconds on a slow line.
+      // Reporting the phase is what answers "is it stuck?" - only the download
+      // has a number, and it is the phase most likely to be the slow one.
+      onProgress: (progress) => this.showBootPhase(progress.phase, progress.percent),
     });
 
     this.root = document.createElement("div");
@@ -132,6 +138,7 @@ export class VizLab {
     this.vizBtn.className = "cl-btn cl-primary cl-vl-run";
     this.vizBtn.textContent = this.labels.vlPreparing;
     this.vizBtn.disabled = true;
+    this.vizBtn.setAttribute("aria-busy", "true");
     this.vizBtn.setAttribute("data-viz", "");
     this.vizBtn.addEventListener("click", () => void this.visualize());
 
@@ -161,6 +168,59 @@ export class VizLab {
     return new VizLab(host, config);
   }
 
+  /** Paint a wait inside the button: a label naming the phase, over a bar.
+   *
+   *  `percent` null means "no measurable progress" - the bar then animates
+   *  instead of filling, because a fake percentage that creeps to 90% and stops
+   *  is worse than an honest "this is still going". Every wait longer than a
+   *  second lands here, so none of them can look like a hang. */
+  private showWait(label: string, percent: number | null): void {
+    let bar = this.vizBtn.querySelector<HTMLElement>(".cl-vl-wait-fill");
+    let text = this.vizBtn.querySelector<HTMLElement>(".cl-vl-wait-label");
+    if (!bar || !text) {
+      this.vizBtn.textContent = "";
+      const wrap = document.createElement("span");
+      wrap.className = "cl-vl-wait";
+      text = document.createElement("span");
+      text.className = "cl-vl-wait-label";
+      const track = document.createElement("span");
+      track.className = "cl-vl-wait-bar";
+      bar = document.createElement("span");
+      bar.className = "cl-vl-wait-fill";
+      track.appendChild(bar);
+      wrap.append(text, track);
+      this.vizBtn.appendChild(wrap);
+    }
+    text.textContent = label;
+    if (percent === null) {
+      bar.classList.add("is-indeterminate");
+      bar.style.width = "";
+      this.vizBtn.removeAttribute("aria-valuenow");
+    } else {
+      const pct = Math.max(0, Math.min(100, Math.round(percent)));
+      bar.classList.remove("is-indeterminate");
+      bar.style.width = pct + "%";
+      this.vizBtn.setAttribute("aria-valuenow", String(pct));
+    }
+  }
+
+  /** Put the button back to a plain label, ending whatever wait it was showing. */
+  private endWait(label: string): void {
+    if (this.traceTimer !== null) {
+      clearInterval(this.traceTimer);
+      this.traceTimer = null;
+    }
+    this.vizBtn.textContent = label;
+    this.vizBtn.removeAttribute("aria-busy");
+    this.vizBtn.removeAttribute("aria-valuenow");
+  }
+
+  private showBootPhase(phase: "download" | "start" | "warm", percent: number): void {
+    if (this.ready) return;
+    const wait = bootWait(this.labels, phase, percent);
+    this.showWait(wait.label, wait.percent);
+  }
+
   private async boot(starter: string): Promise<void> {
     await loadMonaco();
     // Monaco is fetched from a CDN, so a host that calls setSource() while that
@@ -187,7 +247,7 @@ export class VizLab {
     } finally {
       this.ready = true;
       this.vizBtn.disabled = false;
-      this.vizBtn.textContent = this.labels.vlVisualize;
+      this.endWait(this.labels.vlVisualize);
     }
   }
 
@@ -195,7 +255,18 @@ export class VizLab {
     if (!this.ready) return;
     const code = this.editor.getValue();
     this.vizBtn.disabled = true;
-    this.vizBtn.textContent = this.labels.vlTracing;
+    this.vizBtn.setAttribute("aria-busy", "true");
+    // A trace is one round trip to the host, which reports no sub-phases, so
+    // there is no honest percentage here. Count the wait instead: seconds
+    // ticking up is the difference between "working" and "hung".
+    const startedAt = Date.now();
+    const tick = (): void => {
+      const wait = traceWait(this.labels, Date.now() - startedAt);
+      this.showWait(wait.label, wait.percent);
+    };
+    tick();
+    if (this.traceTimer !== null) clearInterval(this.traceTimer);
+    this.traceTimer = setInterval(tick, 1000);
     this.setStatus("");
     // Every path out of here reports exactly once, so a host grading on `onTrace`
     // never has to guess whether a press it saw start ever finished.
@@ -241,7 +312,7 @@ export class VizLab {
       this.setStatus(message);
     } finally {
       this.vizBtn.disabled = false;
-      this.vizBtn.textContent = this.labels.vlVisualize;
+      this.endWait(this.labels.vlVisualize);
       if (report) this.onTrace?.(report);
     }
   }
