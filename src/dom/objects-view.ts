@@ -15,7 +15,7 @@
 import type { Panel, SyncCtx } from "./panel.js";
 import { escapeHtml } from "../core/narration.js";
 import { DEFAULT_VIZ_LABELS } from "../core/memory-model.js";
-import type { VizLabels } from "../core/memory-model.js";
+import type { VizLabels, ResolvedModel } from "../core/memory-model.js";
 import {
   chainRows,
   openObject,
@@ -25,6 +25,7 @@ import {
   type ChainRow,
   type Replay,
 } from "../core/objects-scene.js";
+import type { ObjectStore } from "../core/git-objects.js";
 
 export class ObjectsView implements Panel {
   readonly el: HTMLElement;
@@ -33,6 +34,7 @@ export class ObjectsView implements Panel {
   private readonly openEl: HTMLElement;
   private readonly noteEl: HTMLElement;
   private readonly labels: VizLabels;
+  private prevStore: ObjectStore | null = null;
 
   constructor(labels: VizLabels = DEFAULT_VIZ_LABELS) {
     this.labels = labels;
@@ -60,7 +62,7 @@ export class ObjectsView implements Panel {
     this.folderEl.hidden = !wantsFolder;
     this.chainEl.hidden = !wantsChain;
     if (wantsFolder) this.folderEl.innerHTML = folderHtml(replay, this.labels, scene.detail);
-    if (wantsChain) this.chainEl.innerHTML = chainHtml(chainRows(replay), this.labels);
+    if (wantsChain) this.chainEl.innerHTML = chainHtml(chainRows(replay), this.labels, replay.store);
 
     const opened = scene.open ? openObject(replay, scene.open, scene.openRaw) : null;
     this.openEl.hidden = !opened;
@@ -75,7 +77,69 @@ export class ObjectsView implements Panel {
 
     this.noteEl.innerHTML = scene.note ? escapeHtml(scene.note) : "";
     this.noteEl.hidden = !scene.note;
+
+    this.prevStore = replay.store;
   }
+
+  /** Animate the transition between steps. Respects `prefers-reduced-motion`. */
+  async animate(model: ResolvedModel): Promise<void> {
+    const scene = resolveObjects(model.objects);
+    if (!scene || !this.prevStore) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const replay = replayObjects(scene);
+    const prevHead = this.prevStore.head;
+    const currHead = replay.store.head;
+
+    // Animate HEAD movement between branches - when HEAD moves from one ref to
+    // another, fade the old marker out and the new one in.
+    if (prevHead.kind === "ref" && currHead.kind === "ref" && prevHead.ref !== currHead.ref) {
+      const oldMarker = this.folderEl.querySelector(`[data-head="${escapeAttr(prevHead.ref)}"]`) as HTMLElement | null;
+      const newMarker = this.folderEl.querySelector(`[data-head="${escapeAttr(currHead.ref)}"]`) as HTMLElement | null;
+      if (oldMarker && newMarker) {
+        oldMarker.style.opacity = "0";
+        newMarker.style.opacity = "1";
+        newMarker.classList.add("cl-ob-head-moved");
+        await sleep(600);
+        newMarker.classList.remove("cl-ob-head-moved");
+      }
+    }
+  }
+}
+
+const TINTS = 8;
+
+/** Derive a tint class from an object id, so the same id carries the same colour
+ *  everywhere - in the folder, on a ref, in `HEAD`, in the index, in the chain.
+ *
+ *  The colour comes from the object's POSITION in the store, not from a hash of
+ *  the id. A hash collides: four buckets and three objects gave two of them the
+ *  same tint, which tells the learner two different objects are the same thing -
+ *  worse than no colour at all. The store is insertion-ordered and every scene
+ *  replays from empty, so a position is both stable across steps and unique
+ *  until the palette runs out. */
+function tintClass(id: string, store: ObjectStore): string {
+  let i = 0;
+  for (const key of store.objects.keys()) {
+    if (key === id) return `cl-ob-id-t${i % TINTS}`;
+    i++;
+  }
+  return "cl-ob-id-t0";
+}
+
+/** Wrap an id with its tint class for hover pairing. */
+function tintId(id: string, store: ObjectStore): string {
+  return `<span class="cl-ob-id ${tintClass(id, store)}">${short(id)}</span>`;
+}
+
+/** Escape an attribute value for safe use in `data-*` or other HTML attributes. */
+function escapeAttr(value: string): string {
+  return value.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+/** Sleep for animation timing. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** The folder listing. Object ids are split the way git splits them on disk -
@@ -94,13 +158,20 @@ function folderHtml(replay: Replay, labels: VizLabels, detail: "core" | "full"):
   if (detail === "full") lines.push(`    ${dim("info/")}`, `    ${dim("pack/")}`);
   if (!store.objects.size) lines.push(`    ${dim(escapeHtml(labels.objEmpty))}`);
   for (const [id, object] of store.objects) {
-    const body = `${id.slice(0, 2)}/${id.slice(2, 8)}...  <span class="cl-ob-type">${object.type}</span>`;
+    const tinted = `<span class="cl-ob-id ${tintClass(id, store)}">${id.slice(0, 2)}/${id.slice(2, 8)}...</span>`;
+    const body = `${tinted}  <span class="cl-ob-type">${object.type}</span>`;
     lines.push(`    ${added.has(id) ? `<span class="cl-ob-new">${body}</span>` : body}`);
   }
   lines.push("  refs/heads/");
   if (!store.refs.size) lines.push(`    ${dim(escapeHtml(labels.objNoNames))}`);
+  // Which ref does HEAD point to, if any? The HEAD marker sits beside that line.
+  const headRef = store.head.kind === "ref" ? store.head.ref : null;
   for (const [name, id] of store.refs) {
-    lines.push(`    ${escapeHtml(name.replace(/^refs\/heads\//, ""))}   ${dim(short(id))}`);
+    const shortName = escapeHtml(name.replace(/^refs\/heads\//, ""));
+    const marker = headRef === name
+      ? ` <span class="cl-ob-head" data-head="${escapeAttr(name)}">◂ HEAD</span>`
+      : `<span class="cl-ob-head" data-head="${escapeAttr(name)}" style="opacity:0">◂ HEAD</span>`;
+    lines.push(`    <span class="cl-ob-ref">${shortName}</span>   ${tintId(id, store)}${marker}`);
   }
   if (detail === "full") lines.push(`  ${dim("refs/tags/")}`);
   // HEAD is a text file holding one line, and that line is what it says here.
@@ -108,12 +179,12 @@ function folderHtml(replay: Replay, labels: VizLabels, detail: "core" | "full"):
   // truth, and this track's whole promise is that these are ordinary files.
   const headLine = store.head.kind === "ref"
     ? `ref: ${store.head.ref}`
-    : short(store.head.id);
+    : tintId(store.head.id, store);
   lines.push(`  HEAD    ${dim(escapeHtml(headLine))}`);
   if (store.index.size) {
     lines.push("  index");
     for (const [path, id] of store.index) {
-      lines.push(`    ${dim(`${escapeHtml(path)}  ${short(id)}`)}`);
+      lines.push(`    ${dim(`${escapeHtml(path)}  `)}${tintId(id, store)}`);
     }
   }
   if (store.worktree.size) {
@@ -141,12 +212,21 @@ function dim(text: string): string {
 /** One row per object, each saying what it names. The `names` chip repeats the
  *  next row's id verbatim so a learner can follow it by eye rather than by
  *  trusting a line. */
-function chainHtml(rows: ChainRow[], labels: VizLabels): string {
+function chainHtml(rows: ChainRow[], labels: VizLabels, store: ObjectStore): string {
   if (!rows.length) return `<p class="cl-ob-empty">${escapeHtml(labels.objNothingYet)}</p>`;
+  // Which ref does HEAD point to? The HEAD marker sits beside that ref's chip.
+  const headRef = store.head.kind === "ref" ? store.head.ref : null;
   return rows
     .map((row) => {
       if (row.kind === "ref") {
-        return `<span class="cl-ob-ref">${escapeHtml(row.label)}</span>`;
+        const shortName = escapeHtml(row.label);
+        // Reconstruct the full ref name to compare with HEAD - the row's label is
+        // the short name ("main") but HEAD holds the full path ("refs/heads/main").
+        const fullRef = `refs/heads/${row.label}`;
+        const marker = headRef === fullRef
+          ? ` <span class="cl-ob-head" data-head="${escapeAttr(fullRef)}">◂ HEAD</span>`
+          : `<span class="cl-ob-head" data-head="${escapeAttr(fullRef)}" style="opacity:0">◂ HEAD</span>`;
+        return `<span class="cl-ob-ref">${shortName}</span>${marker}`;
       }
       const classes = ["cl-ob-row"];
       if (row.fresh) classes.push("cl-ob-fresh");
@@ -163,7 +243,7 @@ function chainHtml(rows: ChainRow[], labels: VizLabels): string {
             .map(
               (n) =>
                 `<span class="cl-ob-role">${escapeHtml(n.role)}</span>` +
-                `<span class="cl-ob-names">${short(n.id)}</span>`,
+                `<span class="cl-ob-names ${tintClass(n.id, store)}">${short(n.id)}</span>`,
             )
             .join(" ")}`
         : "";
@@ -172,7 +252,7 @@ function chainHtml(rows: ChainRow[], labels: VizLabels): string {
       return (
         `<div class="${classes.join(" ")}"${indent}>` +
         `<span class="cl-ob-kind">${kind}</span>` +
-        `<span class="cl-ob-id">${short(row.id)}</span>` +
+        tintId(row.id, store) +
         `<span class="cl-ob-body">${escapeHtml(row.body || "")}${names}</span>` +
         `</div>`
       );

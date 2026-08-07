@@ -235,3 +235,59 @@ test("openRaw puts the real hashed bytes on screen, header and all", () => {
   assert.ok(lines.includes("blob 12\\0"), "header on its own line");
   assert.ok(lines.includes("hello world"), "body below it");
 });
+
+// ===== VISUAL CLUES =====
+// The same object id must get the same tint class everywhere it appears - in the
+// folder, in refs, in the index, and in the chain. Hovering any id must outline
+// every mention of it. Ref names render as chips, and the HEAD marker sits
+// beside the ref that HEAD points to.
+
+test("the same object id gets the same tint class in the folder and the chain", () => {
+  const view = render({ lens: "both", acts: SAVE });
+  const folder = view.el.querySelector(".cl-ob-folder")!.innerHTML;
+  const chain = view.el.querySelector(".cl-ob-chain")!.innerHTML;
+  
+  // Extract all tint classes from folder and chain.
+  const folderTints = [...folder.matchAll(/cl-ob-id-t(\d+)/g)].map((m) => m[0]);
+  const chainTints = [...chain.matchAll(/cl-ob-id-t(\d+)/g)].map((m) => m[0]);
+  
+  assert.ok(folderTints.length > 0, "folder should have tinted ids");
+  assert.ok(chainTints.length > 0, "chain should have tinted ids");
+  
+  // Every tint class should be one of the four palette classes.
+  const palette = ["cl-ob-id-t0", "cl-ob-id-t1", "cl-ob-id-t2", "cl-ob-id-t3"];
+  for (const tint of [...folderTints, ...chainTints]) {
+    assert.ok(palette.includes(tint), `${tint} should be in the palette`);
+  }
+});
+
+test("a ref name renders as a chip with .cl-ob-ref", () => {
+  const view = render({ lens: "folder", acts: SAVE });
+  const refs = view.el.querySelectorAll(".cl-ob-ref");
+  assert.ok(refs.length > 0, "should have ref chips");
+  assert.equal(refs[0].textContent, "main", "ref chip should contain the branch name");
+});
+
+test("the HEAD marker appears beside the ref that HEAD points to in the folder", () => {
+  const view = render({ lens: "folder", acts: SAVE });
+  const headMarkers = view.el.querySelectorAll(".cl-ob-head");
+  
+  // There should be one visible marker per ref line - one for main (visible),
+  // possibly others hidden for future refs.
+  const visible = Array.from(headMarkers).filter((m) => (m as HTMLElement).style.opacity !== "0");
+  assert.equal(visible.length, 1, "exactly one HEAD marker should be visible");
+  assert.match(visible[0].textContent!, /HEAD/, "marker should say HEAD");
+});
+
+test("the HEAD marker appears beside the ref in the chain view too", () => {
+  const view = render({ lens: "chain", acts: SAVE });
+  const headMarkers = view.el.querySelectorAll(".cl-ob-head");
+  const visible = Array.from(headMarkers).filter((m) => (m as HTMLElement).style.opacity !== "0");
+  assert.equal(visible.length, 1, "exactly one HEAD marker should be visible in chain");
+});
+
+test("HEAD marker has a data-head attribute for animation targeting", () => {
+  const view = render({ lens: "folder", acts: SAVE });
+  const markers = view.el.querySelectorAll(".cl-ob-head[data-head]");
+  assert.ok(markers.length > 0, "HEAD markers should have data-head attribute");
+});

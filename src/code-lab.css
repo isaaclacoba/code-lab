@@ -1769,7 +1769,48 @@
   text-transform: uppercase;
   color: #6f7a86;
 }
-.cl-ob-id { font-family: var(--cl-mono); font-size: calc(var(--mv-fs, 1) * 11.5px); color: #1a1f5c; }
+
+/* Tinted ids - one stable colour per object id, everywhere it appears. */
+.cl-ob-id {
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 11.5px);
+  border-radius: 3px;
+  padding: 0 3px;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+/* Four-colour palette for object ids. Chosen for legibility on both the dark
+   folder panel (#1d2130) and the light chain rows (#fff). */
+.cl-ob-id-t0 { background: #2f855a40; color: #2f855a; }
+.cl-ob-id-t1 { background: #97602040; color: #976020; }
+.cl-ob-id-t2 { background: #2b6cb040; color: #2b6cb0; }
+.cl-ob-id-t3 { background: #a0397040; color: #a03970; }
+.cl-ob-id-t4 { background: #6b46c140; color: #6b46c1; }
+.cl-ob-id-t5 { background: #b7791f40; color: #b7791f; }
+.cl-ob-id-t6 { background: #2c718540; color: #2c7185; }
+.cl-ob-id-t7 { background: #8b3a3a40; color: #8b3a3a; }
+
+/* Hover any id -> outline every mention of the SAME id, using :has() for
+   brevity. A class toggle on mouseenter would also work if :has() support is
+   not a requirement. */
+.cl-ob-folder:has(.cl-ob-id-t4:hover) .cl-ob-id-t4,
+.cl-ob-chain:has(.cl-ob-id-t4:hover) .cl-ob-id-t4,
+.cl-ob-folder:has(.cl-ob-id-t5:hover) .cl-ob-id-t5,
+.cl-ob-chain:has(.cl-ob-id-t5:hover) .cl-ob-id-t5,
+.cl-ob-folder:has(.cl-ob-id-t6:hover) .cl-ob-id-t6,
+.cl-ob-chain:has(.cl-ob-id-t6:hover) .cl-ob-id-t6,
+.cl-ob-folder:has(.cl-ob-id-t7:hover) .cl-ob-id-t7,
+.cl-ob-chain:has(.cl-ob-id-t7:hover) .cl-ob-id-t7,
+.cl-ob-folder:has(.cl-ob-id-t0:hover) .cl-ob-id-t0,
+.cl-ob-chain:has(.cl-ob-id-t0:hover) .cl-ob-id-t0,
+.cl-ob-folder:has(.cl-ob-id-t1:hover) .cl-ob-id-t1,
+.cl-ob-chain:has(.cl-ob-id-t1:hover) .cl-ob-id-t1,
+.cl-ob-folder:has(.cl-ob-id-t2:hover) .cl-ob-id-t2,
+.cl-ob-chain:has(.cl-ob-id-t2:hover) .cl-ob-id-t2,
+.cl-ob-folder:has(.cl-ob-id-t3:hover) .cl-ob-id-t3,
+.cl-ob-chain:has(.cl-ob-id-t3:hover) .cl-ob-id-t3 {
+  box-shadow: 0 0 0 2px currentColor inset;
+}
+
 .cl-ob-body {
   font-family: var(--cl-mono);
   font-size: calc(var(--mv-fs, 1) * 11.5px);
@@ -1779,7 +1820,7 @@
   text-overflow: ellipsis;
 }
 /* The chip repeats the next row's id verbatim, so the link can be followed by
-   eye instead of trusted. */
+   eye instead of trusted. Gets the same tint class as the id it names. */
 .cl-ob-role {
   margin-right: 0.3em;
   font-size: 0.85em;
@@ -1793,19 +1834,48 @@
   background: #eef1f6;
   border-radius: 6px;
   padding: 0 6px;
-  color: #1a1f5c;
+  font-family: var(--cl-mono);
+  font-size: calc(var(--mv-fs, 1) * 11.5px);
+  transition: background 0.3s, box-shadow 0.3s;
 }
+
+/* Branch chip - renders a ref name as a pill. */
 .cl-ob-ref {
-  display: inline-flex;
-  margin-left: -16px;
-  background: #f0b429;
-  color: #3a2c05;
+  display: inline-block;
+  background: #dda94b;
+  color: #2a2100;
   border-radius: 999px;
   padding: 2px 11px;
   font-family: var(--cl-mono);
   font-size: calc(var(--mv-fs, 1) * 11.5px);
   font-weight: 600;
 }
+
+/* HEAD marker - sits beside the branch HEAD points at. Fades in/out on switch. */
+.cl-ob-head {
+  display: inline-block;
+  color: #f6ad55;
+  font-weight: 700;
+  margin-left: 0.5em;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+}
+
+.cl-ob-head-moved {
+  animation: cl-ob-head-nudge 0.6s ease;
+}
+
+@keyframes cl-ob-head-nudge {
+  0% { transform: translateX(0); }
+  40% { transform: translateX(10px); }
+  100% { transform: translateX(0); }
+}
+
+/* Respect prefers-reduced-motion - disable animations when requested. */
+@media (prefers-reduced-motion: reduce) {
+  .cl-ob-head { transition: none; }
+  .cl-ob-head-moved { animation: none; }
+}
+
 .cl-ob-empty { margin: 0; color: #6f7a86; font-size: calc(var(--mv-fs, 1) * 13px); }
 
 /* An object opened up: the exact bytes git stores, on the pale panel rather than
