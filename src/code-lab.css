@@ -1845,6 +1845,9 @@
   background: #dda94b;
   color: #2a2100;
   border-radius: 999px;
+  /* `line-height: 1` keeps the chip inside the pre's 1.8 line box. Without it
+     the chip is taller than the line and neighbouring ref rows collide. */
+  line-height: 1;
   padding: 2px 11px;
   font-family: var(--cl-mono);
   font-size: calc(var(--mv-fs, 1) * 11.5px);
@@ -1852,9 +1855,13 @@
 }
 
 /* HEAD marker - sits beside the branch HEAD points at. Fades in/out on switch. */
+/* The marker lives in two places with opposite backgrounds: the folder panel
+   is dark, the chain rows are white. One colour cannot serve both - the amber
+   that reads on #1d2130 measures 1.90:1 on white. Each container sets its own
+   below. */
 .cl-ob-head {
   display: inline-block;
-  color: #f6ad55;
+  line-height: 1;
   font-weight: 700;
   margin-left: 0.5em;
   transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
@@ -1906,3 +1913,6 @@
 .cl-ob-rawhead {
   color: var(--mv-dim, #8b98a5);
 }
+
+.cl-ob-folder .cl-ob-head { color: #f6ad55; }
+.cl-ob-chain .cl-ob-head { color: #8a5300; }
