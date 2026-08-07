@@ -33,7 +33,19 @@ export type ObjectLens = "folder" | "chain" | "both";
  *  git holds.
  *
  *  `switch` repoints `HEAD` at a different ref - the symbolic form, `HEAD`
- *  holding `ref: refs/heads/<name>`. */
+ *  holding `ref: refs/heads/<name>`.
+ *
+ *  `detach` puts a raw commit id into `HEAD` - the detached state. Lessons need
+ *  this to show what `HEAD` can hold and what "detached" means, distinct from
+ *  the symbolic form.
+ *
+ *  `amend` writes a replacement commit with a new message and moves the ref to
+ *  it. The original commit stays in the store, byte for byte, with nothing
+ *  pointing at it - teaching that "undone" and "gone" are different.
+ *
+ *  `reset` moves a ref backward to an earlier commit. Everything the ref left
+ *  behind stays in the store and becomes unreachable - the same immutability
+ *  lesson as `amend`, shown a different way. */
 export type ObjectAct =
   | { act: "write"; path: string; text: string }
   | { act: "store"; path: string }
@@ -41,7 +53,10 @@ export type ObjectAct =
   | { act: "list" }
   | { act: "save"; message: string }
   | { act: "name"; ref: string; at?: string }
-  | { act: "switch"; ref: string };
+  | { act: "switch"; ref: string }
+  | { act: "detach"; at?: string }
+  | { act: "amend"; message: string }
+  | { act: "reset"; ref: string; to: string };
 
 /** One step of an Inside-git explainer. */
 export interface ObjectsScene {
@@ -173,6 +188,45 @@ export function replayObjects(scene: ResolvedObjectsScene): Replay {
       }
       case "switch": {
         store.head = { kind: "ref", ref: act.ref };
+        break;
+      }
+      case "detach": {
+        const target = act.at ? savedByMessage.get(act.at) : latestCommit;
+        if (target) store.head = { kind: "detached", id: target };
+        break;
+      }
+      case "amend": {
+        if (!latestCommit) break;
+        const old = store.objects.get(latestCommit);
+        if (!old?.commit) break;
+        // Write a replacement commit - same tree, same parents, new message.
+        const replacement = store.writeCommit({
+          tree: old.commit.tree,
+          parents: old.commit.parents,
+          author: old.commit.author,
+          committer: old.commit.committer,
+          message: act.message,
+        });
+        savedByMessage.set(act.message, replacement);
+        latestCommit = replacement;
+        // Move the ref to the replacement. The original commit stays in the
+        // store but nothing points at it anymore.
+        if (store.head.kind === "ref") {
+          const ref = store.head.ref;
+          if (store.refs.has(ref)) store.refs.set(ref, replacement);
+        }
+        break;
+      }
+      case "reset": {
+        const target = savedByMessage.get(act.to);
+        if (target) {
+          store.refs.set(act.ref, target);
+          // If HEAD points at this ref and the ref moved backward, update
+          // latestCommit so subsequent saves chain from the right place.
+          if (store.head.kind === "ref" && store.head.ref === act.ref) {
+            latestCommit = target;
+          }
+        }
         break;
       }
     }

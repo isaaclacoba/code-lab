@@ -123,6 +123,83 @@ test("switch repoints HEAD at a different ref - the symbolic form", () => {
   assert.deepEqual(replay.store.head, { kind: "ref", ref: "refs/heads/feature" });
 });
 
+test("detach puts a raw commit id into HEAD - the detached state", () => {
+  const { replay } = run([
+    { act: "write", path: "a.txt", text: "one\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "one" },
+    { act: "write", path: "b.txt", text: "two\n" },
+    { act: "store", path: "b.txt" }, { act: "list" }, { act: "save", message: "two" },
+    { act: "name", ref: "refs/heads/main" },
+    { act: "detach", at: "one" },
+  ]);
+  const firstCommit = [...replay.store.objects.values()].find(
+    (o) => o.commit?.message === "one"
+  );
+  assert.ok(firstCommit, "the first commit exists");
+  assert.deepEqual(replay.store.head, { kind: "detached", id: firstCommit.id });
+  assert.equal(replay.store.reachable().size, 6, "both commits are still reachable");
+});
+
+test("detach defaults to the latest commit when no target is given", () => {
+  const { replay } = run([
+    { act: "write", path: "a.txt", text: "one\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "one" },
+    { act: "detach" },
+  ]);
+  const commit = [...replay.store.objects.values()].find((o) => o.type === "commit");
+  assert.ok(commit);
+  assert.deepEqual(replay.store.head, { kind: "detached", id: commit.id });
+});
+
+test("amend writes a replacement commit and orphans the original", () => {
+  const { replay } = run([
+    { act: "write", path: "a.txt", text: "one\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "first draft" },
+    { act: "name", ref: "refs/heads/main" },
+    { act: "amend", message: "better message" },
+  ]);
+  const commits = [...replay.store.objects.values()].filter((o) => o.type === "commit");
+  assert.equal(commits.length, 2, "both commits exist in the store");
+  const original = commits.find((c) => c.commit?.message === "first draft");
+  const amended = commits.find((c) => c.commit?.message === "better message");
+  assert.ok(original && amended, "both commits are present");
+  // The ref moved to the replacement.
+  assert.equal(replay.store.refs.get("refs/heads/main"), amended.id);
+  // The replacement and the original share the same tree and parents.
+  assert.equal(amended.commit!.tree, original.commit!.tree);
+  assert.deepEqual(amended.commit!.parents, original.commit!.parents);
+  // The original is no longer reachable.
+  const live = replay.store.reachable();
+  assert.ok(live.has(amended.id), "the amended commit is reachable");
+  assert.ok(!live.has(original.id), "the original commit is NOT reachable - it is orphaned");
+});
+
+test("reset moves a ref backward and orphans what it left behind", () => {
+  const { replay } = run([
+    { act: "write", path: "a.txt", text: "one\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "first" },
+    { act: "write", path: "b.txt", text: "two\n" },
+    { act: "store", path: "b.txt" }, { act: "list" }, { act: "save", message: "second" },
+    { act: "write", path: "c.txt", text: "three\n" },
+    { act: "store", path: "c.txt" }, { act: "list" }, { act: "save", message: "third" },
+    { act: "name", ref: "refs/heads/main" },
+    { act: "reset", ref: "refs/heads/main", to: "first" },
+  ]);
+  const commits = [...replay.store.objects.values()].filter((o) => o.type === "commit");
+  assert.equal(commits.length, 3, "all three commits exist in the store");
+  const first = commits.find((c) => c.commit?.message === "first");
+  const second = commits.find((c) => c.commit?.message === "second");
+  const third = commits.find((c) => c.commit?.message === "third");
+  assert.ok(first && second && third, "all commits are present");
+  // The ref moved backward to the first commit.
+  assert.equal(replay.store.refs.get("refs/heads/main"), first.id);
+  // The second and third commits are no longer reachable.
+  const live = replay.store.reachable();
+  assert.ok(live.has(first.id), "first commit is reachable");
+  assert.ok(!live.has(second.id), "second commit is NOT reachable - it is orphaned");
+  assert.ok(!live.has(third.id), "third commit is NOT reachable - it is orphaned");
+});
+
 test("acts that cannot apply are skipped, not thrown", () => {
   const { replay } = run([
     { act: "store", path: "missing.txt" },
