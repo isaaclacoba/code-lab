@@ -141,7 +141,14 @@ public static class Tracer
 
     // ---- planning: statement -> (line, local names to snapshot) ----
 
-    public sealed record StepPlan(int Line, ImmutableArray<string> Vars);
+    /** One variable to snapshot, and what it IS to the call it lives in.
+     *  Roslyn already tells us whether a name is a parameter or a local; the
+     *  trace used to throw that away and hand the panel a flat list of names,
+     *  which hides the one thing a parameter is for - its value came from the
+     *  caller. */
+    public sealed record PlanVar(string Name, string Role);
+
+    public sealed record StepPlan(int Line, ImmutableArray<PlanVar> Vars);
 
     private static Dictionary<StatementSyntax, StepPlan> BuildPlan(SyntaxTree tree, SemanticModel model)
     {
@@ -170,12 +177,12 @@ public static class Tracer
         return stmt.Parent is BlockSyntax || stmt.Parent is GlobalStatementSyntax || stmt.Parent is CompilationUnitSyntax;
     }
 
-    private static ImmutableArray<string> SnapshotVars(SemanticModel model, StatementSyntax stmt)
+    private static ImmutableArray<PlanVar> SnapshotVars(SemanticModel model, StatementSyntax stmt)
     {
         try
         {
             var flow = model.AnalyzeDataFlow(stmt);
-            if (flow is null || !flow.Succeeded) return ImmutableArray<string>.Empty;
+            if (flow is null || !flow.Succeeded) return ImmutableArray<PlanVar>.Empty;
             var assigned = new HashSet<ISymbol>(flow.DefinitelyAssignedOnExit, SymbolEqualityComparer.Default);
 
             var inScope = model.LookupSymbols(stmt.Span.End)
@@ -185,13 +192,13 @@ public static class Tracer
                 .GroupBy(s => s.Name)
                 .Select(g => g.First())
                 .OrderBy(s => s.Locations[0].SourceSpan.Start)
-                .Select(s => s.Name)
+                .Select(s => new PlanVar(s.Name, s.Kind == SymbolKind.Parameter ? "param" : "local"))
                 .ToImmutableArray();
             return inScope;
         }
         catch
         {
-            return ImmutableArray<string>.Empty;
+            return ImmutableArray<PlanVar>.Empty;
         }
     }
 
@@ -382,10 +389,11 @@ public static class Tracer
             };
             foreach (var v in info.Vars)
             {
-                args.Add(Argument(LiteralExpression(SyntaxKind.StringLiteralExpression, Literal(v))));
+                args.Add(Argument(LiteralExpression(SyntaxKind.StringLiteralExpression, Literal(v.Name))));
                 args.Add(Argument(CastExpression(
                     PredefinedType(Token(SyntaxKind.ObjectKeyword)),
-                    IdentifierName(v))));
+                    IdentifierName(v.Name))));
+                args.Add(Argument(LiteralExpression(SyntaxKind.StringLiteralExpression, Literal(v.Role))));
             }
             return ExpressionStatement(Invoke("Step", args.ToArray()));
         }
@@ -459,12 +467,32 @@ using System.Text;
 
 internal static class __CLTrace
 {
-    private sealed class Frame { public string Id = ""; public string Name = ""; public string Kind = ""; public string Recv = ""; public int Line; public Dictionary<string, object?> Vars = new(); public List<string> Order = new(); }
+    private sealed class Frame
+    {
+        public string Id = "";
+        public string Name = "";
+        public string Kind = "";
+        // What the call runs on: a label to read ("Cart #1") and the object's own
+        // id, so the panel can draw `this` as a real arrow to the card rather
+        // than describing it in prose. The frame does NOT carry the receiver's
+        // fields - a field lives in the object, and the card at the end of the
+        // arrow is where it should be read.
+        public string Recv = "";
+        public string RecvId = "";
+        public int Line;
+        public Dictionary<string, object?> Vars = new();
+        public Dictionary<string, string> Roles = new();
+        public List<string> Order = new();
+    }
     private sealed class StaticSlot { public string Owner = ""; public string Name = ""; public string Value = ""; }
 
     private static readonly List<string> _steps = new();
     private static readonly List<Frame> _stack = new();
     private static readonly Dictionary<object, string> _ids = new(ReferenceEqualityComparer.Instance);
+    // Receivers by id. An object normally reaches the heap picture because some
+    // variable points at it; a receiver may have no such variable in view, and an
+    // arrow to a card that was never drawn points at nothing.
+    private static readonly Dictionary<string, object> _receivers = new();
     private static readonly Dictionary<object, int> _instanceNo = new(ReferenceEqualityComparer.Instance);
     private static readonly Dictionary<string, int> _typeCount = new();
     private static StringWriter _out = new();
@@ -479,7 +507,7 @@ internal static class __CLTrace
 
     public static void Reset(int budget)
     {
-        _steps.Clear(); _stack.Clear(); _ids.Clear(); _instanceNo.Clear(); _typeCount.Clear();
+        _steps.Clear(); _stack.Clear(); _ids.Clear(); _instanceNo.Clear(); _typeCount.Clear(); _receivers.Clear();
         _budget = budget; _count = 0; _callSeq = 0; _objSeq = 0;
         Truncated = false; Stopped = false;
         _out = new StringWriter();
@@ -497,7 +525,12 @@ internal static class __CLTrace
         // For an instance call, note which object it runs on ("Cart #1") so several
         // instances of the same type stay tellable apart. Value types box on the way
         // in (a fresh identity each call), so their number would be meaningless - skip.
-        if (receiver != null && !receiver.GetType().IsValueType) frame.Recv = LabelOf(receiver);
+        if (receiver != null && !receiver.GetType().IsValueType)
+        {
+            frame.Recv = LabelOf(receiver);
+            frame.RecvId = IdOf(receiver);
+            _receivers[frame.RecvId] = receiver;
+        }
         frame.Line = line;
         _stack.Add(frame);
         // A call just started: record the fresh frame at its first line so the call
@@ -519,7 +552,9 @@ internal static class __CLTrace
         if (_stack.Count > 0) _stack[_stack.Count - 1].Line = line;
     }
 
-    public static void Step(int line, params object?[] pairs)
+    // Variables arrive as (name, value, role) triples - the role being "param" or
+    // "local", decided by Roslyn back when the code was instrumented.
+    public static void Step(int line, params object?[] triples)
     {
         if (Stopped) return;
         if (++_count > _budget) { Truncated = true; Stopped = true; throw new __CLStop(); }
@@ -527,11 +562,12 @@ internal static class __CLTrace
         if (_stack.Count > 0)
         {
             var top = _stack[_stack.Count - 1];
-            for (var i = 0; i + 1 < pairs.Length; i += 2)
+            for (var i = 0; i + 2 < triples.Length; i += 3)
             {
-                var key = (string)pairs[i]!;
+                var key = (string)triples[i]!;
                 if (!top.Vars.ContainsKey(key)) top.Order.Add(key);
-                top.Vars[key] = pairs[i + 1];
+                top.Vars[key] = triples[i + 1];
+                top.Roles[key] = (string)triples[i + 2]!;
             }
         }
 
@@ -558,6 +594,14 @@ internal static class __CLTrace
             sb.Append(",\"kind\":").Append(Str(frame.Kind));
             sb.Append(",\"line\":").Append(frame.Line);
             if (frame.Recv.Length > 0) sb.Append(",\"recv\":").Append(Str(frame.Recv));
+            if (frame.RecvId.Length > 0)
+            {
+                sb.Append(",\"recvId\":").Append(Str(frame.RecvId));
+                // Make sure the card the `this` arrow points at is actually drawn,
+                // even when no variable in view happens to reference it.
+                if (_receivers.TryGetValue(frame.RecvId, out var receiver) && seen.Add(receiver))
+                    heap.Add(ObjectCard(receiver, frame.RecvId));
+            }
             sb.Append(",\"vars\":[");
             for (var v = 0; v < frame.Order.Count; v++)
             {
@@ -565,6 +609,8 @@ internal static class __CLTrace
                 var name = frame.Order[v];
                 var val = frame.Vars[name];
                 sb.Append("{\"name\":").Append(Str(name));
+                if (frame.Roles.TryGetValue(name, out var role) && role.Length > 0)
+                    sb.Append(",\"role\":").Append(Str(role));
                 AppendValue(sb, val, heap, seen);
                 sb.Append('}');
             }

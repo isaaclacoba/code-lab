@@ -37,6 +37,12 @@ export interface Slot {
   empty?: boolean;
   /** Spotlight this slot - e.g. a bit that just flipped or a value that changed. */
   hot?: boolean;
+  /** What this variable IS to the call it sits in: a `param` was handed in by the
+   *  caller, a `local` was declared inside. Frames group their rows under that
+   *  heading, because the whole point of a parameter is that its value came from
+   *  somewhere else - a flat list of names hides exactly that. Absent means the
+   *  producer does not know, and the rows are listed without headings. */
+  role?: "param" | "local";
 }
 
 export interface Frame {
@@ -51,6 +57,13 @@ export interface Frame {
   /** For an instance call, the object it runs on (e.g. "Cart #1"), shown under
    *  the frame name so several instances of one type stay tellable apart. */
   recv?: string;
+  /** The heap id of that same object. `recv` is a label; this is the thing, so
+   *  the frame can draw a `this` row with a real arrow to the card instead of
+   *  naming it in prose. A frame does NOT carry the receiver's fields: a field
+   *  lives in the object, and drawing it in the frame teaches the confusion this
+   *  panel exists to clear up. The fields are read off the card the arrow lands
+   *  on, which is why that card glows while its method runs. */
+  recvId?: string;
   /** The 1-based source line this frame is currently paused on. On a caller
    *  waiting for a callee, this is its call site (shown as "paused at line N"). */
   line?: number;
@@ -306,6 +319,11 @@ export interface VizLabels {
    *  instance call runs on, `{line}` the source line a caller is paused at. */
   hpOn: string;
   hpPaused: string;
+  /** HeapCardsView frame sections: the `this` row's name, and the headings over
+   *  the variables handed in by the caller and those declared inside the call. */
+  hpThis: string;
+  hpSecParams: string;
+  hpSecLocals: string;
   /** ConsoleView - the panel heading and its empty state. */
   consoleHead: string;
   consoleIdle: string;
@@ -377,6 +395,9 @@ export const DEFAULT_VIZ_LABELS: VizLabels = {
   hpKindCtor: "constructor",
   hpOn: "on {recv}",
   hpPaused: "paused at line {line}",
+  hpThis: "this",
+  hpSecParams: "handed in",
+  hpSecLocals: "declared here",
   consoleHead: "Console",
   consoleIdle: "Nothing printed yet.",
   vlPreparing: "Preparing compiler...",
@@ -452,10 +473,20 @@ export interface ResolvedModel extends Step {
   heap: HeapObject[];
 }
 
-/** Every reference implied by the slots currently on the stack. */
+/** The dot id a frame's `this` row draws its arrow from. Derived rather than
+ *  stored so the view and the ref list cannot drift apart. */
+export function thisDotId(frameId: string): string {
+  return `${frameId}:this`;
+}
+
+/** Every reference implied by the slots currently on the stack, plus one per
+ *  frame that runs on an object - `this` is a reference like any other, and
+ *  drawing it as one is the whole point: the learner sees that the method did
+ *  not receive a copy of the object, it received the way to reach it. */
 export function deriveRefs(stack: Frame[] = []): Ref[] {
   const refs: Ref[] = [];
   for (const frame of stack) {
+    if (frame.recvId) refs.push({ from: thisDotId(frame.id), to: frame.recvId });
     for (const slot of frame.vars ?? []) {
       if (slot.ref) refs.push({ from: slot.id, to: slot.ref });
     }

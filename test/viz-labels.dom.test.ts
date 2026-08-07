@@ -37,8 +37,10 @@ function sentinelLabels(): VizLabels {
 }
 
 /** A model that lights up every labelled branch at once: statics, constants, all
- *  four frame kinds, a caller paused at a line, and an instance call with a
- *  receiver. Deliberately free of English words that collide with a label. */
+ *  four frame kinds, a caller paused at a line, an instance call whose receiver
+ *  is only a label (the `on Cat #1` fallback), and one whose receiver has a real
+ *  id - which is what draws the `this` row and the two section heads.
+ *  Deliberately free of English words that collide with a label. */
 const MODEL = {
   pc: 3,
   stack: [
@@ -46,6 +48,13 @@ const MODEL = {
     { id: "f1", name: "Helper", kind: "static", line: 20, vars: [] },
     { id: "f2", name: "new Cat", kind: "ctor", line: 4, vars: [] },
     { id: "f3", name: "Speak", kind: "method", recv: "Cat #1", vars: [{ id: "s1", k: "x", v: "1" }] },
+    {
+      id: "f4", name: "Feed", kind: "method", recv: "Cat #1", recvId: "o1",
+      vars: [
+        { id: "s2", k: "grams", v: "40", role: "param" },
+        { id: "s3", k: "left", v: "2", role: "local" },
+      ],
+    },
   ],
   heap: [{ id: "o1", type: "Cat", no: 1, fields: [["_name", "\"Ada\""]], hotFields: [] }],
   globals: [{ id: "Cat.Count", k: "Cat.Count", v: "2" }],
@@ -57,6 +66,21 @@ function heapHtml(labels?: VizLabels): string {
   const view = new HeapCardsView(1, labels);
   view.sync({ model: MODEL } as unknown as SyncCtx);
   return view.el.innerHTML;
+}
+
+/** The words a learner actually READS. A leak has to be judged on text, not on
+ *  markup: `hpThis` is the C# keyword `this`, which also occurs in a class name
+ *  and a dot id, and matching those would report a leak that nobody can see. */
+function heapText(labels?: VizLabels): string {
+  const view = new HeapCardsView(1, labels);
+  view.sync({ model: MODEL } as unknown as SyncCtx);
+  return view.el.textContent ?? "";
+}
+
+function consoleText(model: Partial<ResolvedModel>, labels?: VizLabels): string {
+  const view = new ConsoleView(labels);
+  view.sync({ model } as unknown as SyncCtx);
+  return view.el.textContent ?? "";
 }
 
 function consoleHtml(model: Partial<ResolvedModel>, labels?: VizLabels): string {
@@ -96,7 +120,7 @@ test("every hp* / console* label is actually used by a view", () => {
 
 test("with every label translated, NO English is left in the two views", () => {
   const labels = sentinelLabels();
-  const html = heapHtml(labels) + consoleHtml({}, labels);
+  const html = heapText(labels) + consoleText({}, labels);
   for (const key of KEYS) {
     const english = DEFAULT_VIZ_LABELS[key];
     // A template's English never appears verbatim (it still holds its slots), so

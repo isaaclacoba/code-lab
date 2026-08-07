@@ -22,6 +22,10 @@ export interface TraceVar {
   name: string;
   value?: string;
   ref?: string;
+  /** `param` if the caller handed this value in, `local` if the call declared it.
+   *  Roslyn already knows which at instrumentation time; carrying it lets the
+   *  frame group its rows instead of listing every name in one flat block. */
+  role?: "param" | "local";
 }
 
 /** One call frame. `id` is stable for the life of the call (so the adapter can
@@ -37,6 +41,9 @@ export interface TraceFrame {
   /** For an instance call, the object it runs on, e.g. "Cart #1" - a hint so
    *  several instances of one type stay tellable apart. Absent for static calls. */
   recv?: string;
+  /** The heap id of that same receiver, so the frame can point an arrow at the
+   *  card rather than name it in prose. */
+  recvId?: string;
   /** The 1-based source line this frame is currently paused on. For a caller
    *  waiting on a callee, this is its call site. */
   line?: number;
@@ -220,11 +227,13 @@ function frameToFrame(
     const slot: Slot = { id, k: v.name, hot };
     if (v.ref != null) slot.ref = v.ref;
     else slot.v = v.value ?? "";
+    if (v.role) slot.role = v.role;
     return slot;
   });
   const frame: Frame = { id: f.id, name: f.name, vars };
   if (f.kind) frame.kind = f.kind;
   if (f.recv) frame.recv = f.recv;
+  if (f.recvId) frame.recvId = f.recvId;
   if (typeof f.line === "number") frame.line = f.line;
   return frame;
 }

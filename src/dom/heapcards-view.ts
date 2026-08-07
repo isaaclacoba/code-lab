@@ -22,7 +22,7 @@ import type {
   ResolvedModel,
   Slot,
 } from "../core/memory-model.js";
-import { DEFAULT_VIZ_LABELS, slotKind } from "../core/memory-model.js";
+import { DEFAULT_VIZ_LABELS, slotKind, thisDotId } from "../core/memory-model.js";
 import type { VizLabels } from "../core/memory-model.js";
 import { fill } from "../core/template.js";
 import { reconcile } from "./reconcile.js";
@@ -210,21 +210,86 @@ function frameNode(f: FrameVM, labels: VizLabels, existing?: HTMLElement): HTMLE
   el.className = "cl-mv-hp-frame" + (f.active ? " is-active" : " is-caller");
   const label = kindLabel(f.kind, labels);
   const badge = label ? `<span class="cl-mv-hp-fkind">${esc(label)}</span>` : "";
-  const recv = f.recv
-    ? `<div class="cl-mv-hp-frecv">${esc(fill(labels.hpOn, { recv: f.recv }))}</div>`
-    : "";
   // A caller is paused on the line that made the call; the active frame's line is
   // already lit in the editor, so only callers show it here.
   const paused = !f.active && typeof f.line === "number"
     ? `<div class="cl-mv-hp-fpaused">${esc(fill(labels.hpPaused, { line: f.line }))}</div>`
     : "";
-  const rows = (f.vars ?? []).map(rowHtml).join("");
   el.innerHTML =
     `<div class="cl-mv-hp-fname"><span class="cl-mv-hp-fn">${esc(f.name ?? f.id)}</span>${badge}</div>` +
-    recv +
     paused +
-    `<div class="cl-mv-hp-rows">${rows}</div>`;
+    `<div class="cl-mv-hp-rows">${frameBody(f, labels)}</div>`;
   return el;
+}
+
+/** A frame's rows, grouped by what each variable IS to the call.
+ *
+ *  `this` first, drawn as a real arrow to the object on the heap. It used to be
+ *  the prose line "on Robot #1", which reads as a note about the frame rather
+ *  than as what it is - a reference the method was handed, exactly like any
+ *  other. The receiver's FIELDS are deliberately not repeated here: a field
+ *  lives in the object, and a frame that lists them teaches the confusion this
+ *  panel exists to clear up. They are on the card the arrow lands on, which is
+ *  why that card glows while its method runs.
+ *
+ *  Then the parameters, then the locals. A parameter's whole nature is that its
+ *  value arrived from the caller, and a flat list of names hides that. When the
+ *  producer does not label roles - a hand-written lesson step, an older trace -
+ *  there is nothing to group by, so the rows are listed plainly and no invented
+ *  heading appears over them. */
+function frameBody(f: FrameVM, labels: VizLabels): string {
+  const vars = f.vars ?? [];
+  // With a receiver id we can draw `this` as a real arrow. Without one - an older
+  // trace, or a hand-written lesson step - we still have to say which object the
+  // method runs on, so fall back to the prose line rather than dropping it.
+  const thisRow = f.recvId
+    ? section("", [refRowHtml(thisDotId(f.id), labels.hpThis, f.recv)], "is-this")
+    : f.recv
+      ? `<div class="cl-mv-hp-frecv">${esc(fill(labels.hpOn, { recv: f.recv }))}</div>`
+      : "";
+  const params = vars.filter((v) => v.role === "param");
+  const locals = vars.filter((v) => v.role === "local");
+  if (params.length === 0 && locals.length === 0) {
+    return thisRow + vars.map(rowHtml).join("");
+  }
+  const rest = vars.filter((v) => v.role !== "param" && v.role !== "local");
+  return (
+    thisRow +
+    section(labels.hpSecParams, params.map(rowHtml), "is-params") +
+    section(labels.hpSecLocals, locals.map(rowHtml), "is-locals") +
+    rest.map(rowHtml).join("")
+  );
+}
+
+function section(head: string, rows: string[], cls: string): string {
+  if (rows.length === 0) return "";
+  const title = head ? `<div class="cl-mv-hp-sechead">${esc(head)}</div>` : "";
+  return `<div class="cl-mv-hp-sec ${cls}">${title}${rows.join("")}</div>`;
+}
+
+/** A row that points at a heap card: the arrow glyph, the dot the arrow is drawn
+ *  from, and - when we know it - which instance sits at the other end. */
+function refRowHtml(dotId: string, name: string, recv?: string): string {
+  const who = recv ? `<span class="cl-mv-hp-refname">${instanceHtml(recv)}</span>` : "";
+  return (
+    `<div class="cl-mv-hp-row is-ref is-this">` +
+    `<span class="cl-mv-hp-name">${esc(name)}</span>` +
+    `<span class="cl-mv-hp-ref-cell"><span class="cl-mv-hp-arrowglyph">\u2192</span>` +
+    `<span class="cl-mv-hp-dot" data-dot="${esc(dotId)}"></span>${who}</span>` +
+    `</div>`
+  );
+}
+
+/** "Robot #1" split so the two halves can be told apart by CSS. When the column
+ *  is too narrow for both, the TYPE gives way and the number never does - the
+ *  number is the only part that says which of several identical objects this is,
+ *  and the card at the end of the arrow already carries the type. A bare text
+ *  node cannot be told to shrink, which is why the number used to be the part
+ *  pushed out of view. */
+function instanceHtml(label: string): string {
+  const m = /^(.*?)(\s*#\d+)$/.exec(label);
+  if (!m) return `<span class="cl-mv-hp-ty">${esc(label)}</span>`;
+  return `<span class="cl-mv-hp-ty">${esc(m[1])}</span><span class="cl-mv-hp-instno">${esc(m[2].trim())}</span>`;
 }
 
 function rowHtml(v: Slot): string {
@@ -262,7 +327,7 @@ function objNode(o: HeapObject, existing?: HTMLElement): HTMLElement {
   const el = existing ?? document.createElement("div");
   el.className = "cl-mv-hp-card" + (o.dim ? " is-dim" : "");
   el.setAttribute("data-obj", o.id);
-  const no = typeof o.no === "number" ? ` <span class="cl-mv-hp-no">#${o.no}</span>` : "";
+  const no = typeof o.no === "number" ? `<span class="cl-mv-hp-no">#${o.no}</span>` : "";
   const fields = (o.fields ?? [])
     .map((field) => {
       const isHot = (o.hotFields ?? []).includes(field[0]);
@@ -275,7 +340,7 @@ function objNode(o: HeapObject, existing?: HTMLElement): HTMLElement {
     })
     .join("");
   el.innerHTML =
-    `<div class="cl-mv-hp-type">${esc(o.type)}${no}</div>` + fields;
+    `<div class="cl-mv-hp-type"><span class="cl-mv-hp-tyname">${esc(o.type)}</span>${no}</div>` + fields;
   return el;
 }
 

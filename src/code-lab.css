@@ -1124,10 +1124,19 @@
 .cl-mv .cl-mv-hp-frecv { font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 12px); color: var(--mv-name-ink, #475569); margin: -2px 0 6px; }
 .cl-mv .cl-mv-hp-fpaused { font-size: calc(var(--mv-fs) * 11px); color: var(--mv-name-ink, #475569); font-style: italic; margin: -2px 0 6px; }
 .cl-mv .cl-mv-hp-rows { display: flex; flex-direction: column; gap: 4px; }
-.cl-mv .cl-mv-hp-row { display: grid; grid-template-columns: minmax(6ch, 44%) 1fr; align-items: center; gap: 10px; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 14px); background: var(--mv-surface, #fff); border: 1px solid var(--mv-cool-line, #d7e3ff); border-radius: 6px; padding: 3px 8px; }
-.cl-mv .cl-mv-hp-name { color: var(--mv-name-ink, #475569); }
+/* A stack row is `name : value`, and it had the same defect the heap field row
+   had: the name column was capped at 44%, so a real variable name (`percent`,
+   `lastSeen`) was squeezed past its width, wrapped, and left its `:` stranded on
+   a line of its own. The name now takes the width it needs and the value takes
+   the rest; both may shrink, and neither may overlap the other. */
+.cl-mv .cl-mv-hp-row { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); overflow: hidden; align-items: center; gap: 10px; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 14px); background: var(--mv-surface, #fff); border: 1px solid var(--mv-cool-line, #d7e3ff); border-radius: 6px; padding: 3px 8px; }
+.cl-mv .cl-mv-hp-name { color: var(--mv-name-ink, #475569); min-width: 0; overflow-wrap: anywhere; }
 .cl-mv .cl-mv-hp-name::after { content: " :"; }
-.cl-mv .cl-mv-hp-val { color: var(--mv-ink); font-weight: 500; word-break: break-word; }
+/* `break-word` split a two-character value down the middle when the column got
+   tight - a battery of 41 rendered as "4" over "1", which reads as two numbers.
+   A value breaks between words, and only a single word with nowhere left to go
+   breaks inside itself. */
+.cl-mv .cl-mv-hp-val { color: var(--mv-ink); font-weight: 500; min-width: 0; overflow-wrap: anywhere; word-break: normal; }
 .cl-mv .cl-mv-hp-row.is-empty .cl-mv-hp-val { color: var(--mv-empty-ink, #6d7177); font-weight: 400; font-style: italic; }
 .cl-mv .cl-mv-hp-row.is-null .cl-mv-hp-val { color: var(--mv-null-ink, #c0392b); font-weight: 700; }
 .cl-mv .cl-mv-hp-row.is-null .cl-mv-hp-val::before { content: "\2298 "; }
@@ -1140,14 +1149,59 @@
 .cl-mv .cl-mv-hp-card { border: 1px solid var(--mv-obj-line, #bfe0d6); background: var(--mv-obj-bg, #f2f9f6); border-radius: 10px; padding: 9px 10px; transition: opacity 0.2s, box-shadow 0.2s; }
 .cl-mv .cl-mv-hp-card.is-dim { opacity: 0.4; filter: grayscale(0.4); }
 .cl-mv .cl-mv-hp-card.glow { box-shadow: 0 0 0 3px rgba(31,111,95,0.28); }
-.cl-mv .cl-mv-hp-type { font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-accent-ink, var(--mv-heap)); font-weight: 600; }
+.cl-mv .cl-mv-hp-type { font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-accent-ink, var(--mv-heap)); font-weight: 600; display: flex; gap: 6px; min-width: 0; white-space: nowrap; }
 .cl-mv .cl-mv-hp-no { color: var(--mv-name-ink, #475569); font-weight: 600; }
+/* `Robot` and `#1` are one label, so the title never wraps. When it cannot fit,
+   the TYPE gives way and the number does not - the number is the only thing on
+   the card that says which of several identical objects this is. That needs the
+   type in its own span; a bare text node cannot be told to shrink, which is why
+   the number used to be the part pushed out of the card. */
+.cl-mv .cl-mv-hp-tyname { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cl-mv .cl-mv-hp-no { flex: none; }
+
+/* ---- frame sections ---------------------------------------------------- */
+/* A frame groups its rows by what each variable IS to the call: the object it
+   runs on, then what the caller handed in, then what the call declared itself.
+   A flat list of names hides the one thing a parameter is for. */
+.cl-mv .cl-mv-hp-sec { display: flex; flex-direction: column; gap: 4px; }
+.cl-mv .cl-mv-hp-sec + .cl-mv-hp-sec { margin-top: 7px; }
+.cl-mv .cl-mv-hp-sechead {
+  font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 11px);
+  color: var(--mv-name-ink, #64748b); margin: 0 0 1px 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.cl-mv .cl-mv-hp-row.is-this { background: var(--mv-obj-bg, #f2f9f6); border-color: var(--mv-obj-line, #bfe0d6); }
+.cl-mv .cl-mv-hp-refname {
+  font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 12px);
+  color: var(--mv-accent-ink, var(--mv-heap)); font-weight: 600;
+  display: inline-flex; gap: 4px; min-width: 0; overflow: hidden; white-space: nowrap;
+}
+/* Same bargain as the card title, for the same reason. */
+.cl-mv .cl-mv-hp-ty { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cl-mv .cl-mv-hp-instno { flex: none; }
+.cl-mv .cl-mv-hp-arrowglyph, .cl-mv .cl-mv-hp-dot { flex: none; }
+
+/* The panel is fluid - measured on the live lesson it runs from 726px on a
+   tablet down to 311px on a phone, and a 1920 desktop gives 563px. So a row has
+   to survive its column being small, and nothing may paint outside the card it
+   belongs to. */
+.cl-mv .cl-mv-hp-card, .cl-mv .cl-mv-hp-frame { min-width: 0; overflow: hidden; }
+.cl-mv .cl-mv-hp-rows, .cl-mv .cl-mv-hp-sec, .cl-mv .cl-mv-hp-ref-cell { min-width: 0; }
+.cl-mv .cl-mv-hp-fname { min-width: 0; }
+.cl-mv .cl-mv-hp-fn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-mv .cl-mv-hp-fkind { flex: none; }
+/* Below the width where the type and the number both fit, the type goes: the
+   card at the end of the arrow already carries it, and that card glows. */
+.cl-mv .cl-mv-heapcards { container-type: inline-size; }
+@container (max-width: 620px) {
+  .cl-mv .cl-mv-hp-refname .cl-mv-hp-ty { display: none; }
+}
 /* A field row is `name = value`. The name column was capped at 40%, so a real
    field name (`_batteryPercent`) overflowed it and printed straight through the
    value beside it, and the `=` was pushed onto a line of its own. The name now
    takes the width it needs and the value takes the rest; both may shrink, and a
    name with nowhere left to go wraps rather than overlapping its neighbour. */
-.cl-mv .cl-mv-hp-field { display: grid; grid-template-columns: minmax(6ch, auto) 1fr; gap: 4px 10px; align-items: baseline; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-obj-field-ink, #334155); margin-top: 4px; }
+.cl-mv .cl-mv-hp-field { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); overflow: hidden; gap: 4px 10px; align-items: baseline; font-family: var(--cl-mono); font-size: calc(var(--mv-fs) * 13.5px); color: var(--mv-obj-field-ink, #334155); margin-top: 4px; }
 .cl-mv .cl-mv-hp-fkey { min-width: 0; overflow-wrap: anywhere; }
 .cl-mv .cl-mv-hp-fval { min-width: 0; overflow-wrap: anywhere; }
 .cl-mv .cl-mv-hp-fkey::after { content: " ="; color: var(--mv-addr-ink, #687281); }
