@@ -74,7 +74,9 @@ test("an object no name reaches is drawn, and drawn differently", () => {
   });
   const orphans = view.el.querySelectorAll(".cl-ob-orphan");
   assert.equal(orphans.length, 1);
-  assert.match(orphans[0].textContent!, /nothing points here/);
+  // The difference is the class, not a word - the legend explains dashed. Match
+  // the blob's own text so a mark on the WRONG row still fails this.
+  assert.match(orphans[0].textContent!, /goodbye/);
 });
 
 test("objects created by this step's fresh acts are marked in the folder", () => {
@@ -126,7 +128,6 @@ test("the widget's own words come from labels, not from the source", () => {
   const text = view.el.textContent!;
   assert.match(text, /tu carpeta/);
   assert.match(text, /nombra/);
-  assert.match(text, /sin nombre/);
   assert.doesNotMatch(text, /your folder|\bnames\b/);
   // git's own vocabulary is NOT translated - the learner meets these verbatim.
   assert.match(text, /commit/);

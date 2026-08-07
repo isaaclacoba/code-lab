@@ -233,9 +233,11 @@ function chainHtml(rows: ChainRow[], labels: VizLabels, store: ObjectStore): str
       if (row.unreachable) classes.push("cl-ob-orphan");
       // `blob`, `tree` and `commit` stay git's own words - the learner will meet
       // them verbatim in real git output. Only the qualifier around them moves.
-      const kind = row.unreachable
-        ? `${escapeHtml(row.label)} (${escapeHtml(labels.objUnnamed)})`
-        : escapeHtml(row.label);
+      // The row is already dashed and the legend already says what dashed
+      // means. Repeating it in words on every row said the same thing a third
+      // time - and with nothing committed yet, EVERY row is unreachable, so the
+      // phrase stacked up and wrapped over the picture it was describing.
+      const kind = escapeHtml(row.label);
       // `tree` and `parent` are git's own field names and stay untranslated,
       // like `blob`. Without them two ids sit side by side looking identical.
       const names = row.names.length
