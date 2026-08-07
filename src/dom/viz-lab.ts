@@ -104,6 +104,8 @@ export class VizLab {
   private lastSteps: Step[] | null = null;
   private viz: MemoryViz | null = null;
   private ready = false;
+  private mounted = false;
+  private pendingSource: string | null = null;
 
   private constructor(host: HTMLElement, config: VizLabConfig) {
     this.legend = config.legend;
@@ -161,12 +163,23 @@ export class VizLab {
 
   private async boot(starter: string): Promise<void> {
     await loadMonaco();
+    // Monaco is fetched from a CDN, so a host that calls setSource() while that
+    // is in flight would otherwise lose the code: MonacoEditor.setValue is a
+    // no-op before mount. The pending value wins over the constructor's starter,
+    // being the more recent instruction.
     await this.editor.mount(this.editorHost, {
-      value: starter,
+      value: this.pendingSource ?? starter,
       language: this.language,
       readOnly: false,
       autoHeight: { minHeight: 220, maxHeight: 640 },
     });
+    this.mounted = true;
+    // mount() is itself awaited, so a write can arrive after its argument was
+    // evaluated and before it resolves. Re-check rather than assume.
+    if (this.pendingSource !== null) {
+      this.editor.setValue(this.pendingSource);
+      this.pendingSource = null;
+    }
     try {
       await this.runner.warm();
     } catch {
@@ -301,6 +314,12 @@ export class VizLab {
    *  this surface owns. Clears the stage back to its hint - the picture on
    *  screen belongs to the code that produced it, never to the next exercise. */
   setSource(code: string): void {
+    if (!this.mounted) {
+      // Before the editor exists there is nothing to write into, and dropping
+      // this silently hands the learner an empty editor. Hold it for boot().
+      this.pendingSource = code;
+      return;
+    }
     this.editor.setValue(code);
     if (this.editor.setMarkers) this.editor.setMarkers([]);
     this.setStatus("");
@@ -310,6 +329,7 @@ export class VizLab {
   /** The learner's current code. A host grades the trace, not the text; this is
    *  for saving work and for restoring it, not for marking. */
   getSource(): string {
+    if (!this.mounted) return this.pendingSource ?? "";
     return this.editor.getValue();
   }
 
