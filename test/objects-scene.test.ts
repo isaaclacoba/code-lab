@@ -113,6 +113,16 @@ test("naming an earlier save leaves the later ones unreachable but stored", () =
   for (const id of unreachable) assert.ok(replay.store.objects.has(id));
 });
 
+test("switch repoints HEAD at a different ref - the symbolic form", () => {
+  const { replay } = run([
+    { act: "write", path: "a.txt", text: "one\n" },
+    { act: "store", path: "a.txt" }, { act: "list" }, { act: "save", message: "one" },
+    { act: "name", ref: "refs/heads/main" },
+    { act: "switch", ref: "refs/heads/feature" },
+  ]);
+  assert.deepEqual(replay.store.head, { kind: "ref", ref: "refs/heads/feature" });
+});
+
 test("acts that cannot apply are skipped, not thrown", () => {
   const { replay } = run([
     { act: "store", path: "missing.txt" },

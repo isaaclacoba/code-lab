@@ -30,14 +30,18 @@ export type ObjectLens = "folder" | "chain" | "both";
  *
  *  `write` puts text in the folder. `store` turns that text into an object.
  *  Keeping them apart IS the teaching: a file in the folder is not yet a thing
- *  git holds. */
+ *  git holds.
+ *
+ *  `switch` repoints `HEAD` at a different ref - the symbolic form, `HEAD`
+ *  holding `ref: refs/heads/<name>`. */
 export type ObjectAct =
   | { act: "write"; path: string; text: string }
   | { act: "store"; path: string }
   | { act: "pick"; path: string }
   | { act: "list" }
   | { act: "save"; message: string }
-  | { act: "name"; ref: string; at?: string };
+  | { act: "name"; ref: string; at?: string }
+  | { act: "switch"; ref: string };
 
 /** One step of an Inside-git explainer. */
 export interface ObjectsScene {
@@ -165,6 +169,10 @@ export function replayObjects(scene: ResolvedObjectsScene): Replay {
       case "name": {
         const target = act.at ? savedByMessage.get(act.at) : latestCommit;
         if (target) store.refs.set(act.ref, target);
+        break;
+      }
+      case "switch": {
+        store.head = { kind: "ref", ref: act.ref };
         break;
       }
     }

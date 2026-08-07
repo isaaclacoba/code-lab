@@ -381,7 +381,7 @@ export const DEFAULT_VIZ_LABELS: VizLabels = {
   objNoNames: "(no names yet)",
   objYourFolder: "your folder",
   objNothingYet: "Nothing points at anything yet.",
-  objUnnamed: "unnamed",
+  objUnnamed: "nothing points here",
   objNames: "names",
   hpMemory: "MEMORY",
   hpMemoryNote: "the call stack on the left, objects on the heap on the right",
